@@ -3,7 +3,6 @@
 #include <stm32f4xx_gpio.h>
 #include "CAT25512.h"
 
-
 /*
 Send one byte to eeprom via SPI
 */
@@ -36,8 +35,8 @@ void CAT25512_init(void)
 	/* SPI2 setting up*/	
 	GPIO_InitTypeDef mGPIO_InitStructure;
 	SPI_InitTypeDef mSPI;
-	
-	/*GPIO Init*/	
+		
+	/*GPIO Init*/
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
 	
 	GPIO_StructInit(&mGPIO_InitStructure);
@@ -57,7 +56,7 @@ void CAT25512_init(void)
 	mGPIO_InitStructure.GPIO_Speed 	= GPIO_Speed_100MHz;
 	GPIO_Init(GPIOD, &mGPIO_InitStructure);
 	
-	GPIO_PinAFConfig(GPIOC, GPIO_PinSource10, GPIO_AF_SPI3 );
+	GPIO_PinAFConfig(GPIOC, GPIO_PinSource10, GPIO_AF_SPI3);
 	GPIO_PinAFConfig(GPIOC, GPIO_PinSource11, GPIO_AF_SPI3);
 	GPIO_PinAFConfig(GPIOC, GPIO_PinSource12, GPIO_AF_SPI3);	
 		
@@ -208,6 +207,21 @@ void CAT25512_read_block(unsigned short int Address, unsigned char *Data, unsign
 	CAT25512_SendByte((Address&0xFF00)>>8);
 	CAT25512_SendByte((Address&0x00FF));
 	while(totalcnt<length) {
+		//if (cnt == 127) {
+		/*if ( (((Address+totalcnt)&0x007F) == 0) && (totalcnt != 0) ) {
+			//New page reached
+			cnt = 0;
+			//Stop data send
+			delay_ns(200);
+			CAT25512_CS_CLEAR;			
+			//read status register
+			delay_ms(10);
+			CAT25512_CS_SET;
+			CAT25512_SendByte(INTSRUCTION_READ);
+			CAT25512_SendByte(((Address+totalcnt)&0xFF00)>>8);
+			CAT25512_SendByte(((Address+totalcnt)&0x00FF));	
+		};*/
+		
 		Data[totalcnt] = CAT25512_RecieveData();
 		totalcnt++;
 		cnt++;

@@ -25,6 +25,11 @@
 ///Setting up PORTs IO
 void init_HC165(void)
 {
+	/*DDR(HC165_PORT) &= ~_BV(HC165_DATA_PIN);
+	DDR(HC165_PORT) |= 1<<HC165_CLK_PIN;
+	DDR(HC165_PORT) |= 1<<HC165_SS_PIN;
+	DDR(HC165_PORT) |= 1<<HC165_CE_PIN;*/
+	
 	/* init pins struct*/
 	GPIO_InitTypeDef mGPIO_InitStructure;
 	GPIO_InitTypeDef mGPIO_InitStructure2;
@@ -43,7 +48,7 @@ void init_HC165(void)
 	memset(&mGPIO_InitStructure2, 0, sizeof(mGPIO_InitStructure2));
 	mGPIO_InitStructure2.GPIO_Pin 		= SW_DAT;
 	mGPIO_InitStructure2.GPIO_Mode 		= GPIO_Mode_IN;
-	
+
 	GPIO_Init(GPIOC, &mGPIO_InitStructure2);
 	
 	SS_HIGH;
@@ -61,6 +66,7 @@ void HC165_LatchUp(void)
 	delay_us(1);
 	SS_HIGH;	
 }
+
 
 unsigned char HC165_GetByte(void)
 {
@@ -93,7 +99,6 @@ unsigned long int HC165_GetDWord(void)
 {
 	unsigned char tmp[4] = {0,0,0,0};
 	
-
 	tmp[0] = HC165_GetByte();
 	tmp[1] = HC165_GetByte();
 	tmp[2] = HC165_GetByte();
@@ -109,7 +114,7 @@ unsigned long int HC165_GetDWord1(void)
 	tmp[0] = HC165_GetByte();
 	tmp[1] = HC165_GetByte();
 	tmp[2] = HC165_GetByte();
-	
+
 	return (unsigned long int) ((((unsigned long int) (tmp[3]))<<24)|(((unsigned long int) (tmp[2]))<<16)|((unsigned long int) (tmp[1])<<8)|(unsigned long int) (tmp[0]));
 }
 
@@ -121,7 +126,6 @@ unsigned long long int GetButton(void)
 	CE_LOW;
 	delay_us(10);
 	HC165_LatchUp();
-	
 	keys_state_1 = HC165_GetDWord();
 	keys_state_2 = HC165_GetDWord1();
 	CE_HIGH;

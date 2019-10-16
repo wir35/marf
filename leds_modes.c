@@ -1,3 +1,10 @@
+/*
+ * HC595.c
+ *
+ *  Created on: 14.09.2008
+ *      Author: mamonth
+ */
+
 #include <stm32f4xx_gpio.h>
 
 #include <stdlib.h>
@@ -21,9 +28,10 @@ void LEDS_modes_init(void)
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
 	memset(&GPIO_InitStructure, 0, sizeof(GPIO_InitStructure));
 	GPIO_InitStructure.GPIO_Pin 	= GPIO_Pin_4|GPIO_Pin_5|GPIO_Pin_6;
-	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
 	GPIO_InitStructure.GPIO_Mode 	= GPIO_Mode_OUT; 
 	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+	GPIO_InitStructure.GPIO_PuPd	= GPIO_PuPd_UP;
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
 }
 

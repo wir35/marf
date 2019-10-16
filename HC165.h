@@ -1,3 +1,10 @@
+/*
+ * HC165.h
+ *
+ *  Created on: 13.09.2008
+ *      Author: mamonth
+ */
+
 #ifndef HC165_H_
 #define HC165_H_
 //Union which allows to control each switch on panel separately

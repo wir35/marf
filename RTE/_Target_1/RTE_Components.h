@@ -3,7 +3,7 @@
  * Auto generated Run-Time-Environment Component Configuration File
  *      *** Do not modify ! ***
  *
- * Project: 'B248' 
+ * Project: 'B248v2.0' 
  * Target:  'Target 1' 
  */
 

@@ -21,20 +21,20 @@
 #define MAX5135_CMD_WRITE_THRU			0x20 //OR with DAC channel
 
 //DAC channel in CMD byte
-#define MAX5135_DAC_CH0							0x01
-#define MAX5135_DAC_CH1							0x02
-#define MAX5135_DAC_CH2							0x04
-#define MAX5135_DAC_CH3							0x08
+#define MAX5135_DAC_CH0							0x00
+#define MAX5135_DAC_CH1							0x01
+#define MAX5135_DAC_CH2							0x02
+#define MAX5135_DAC_CH3							0x03
 
 //Other data
 #define MAX5135_READY_PIN						0x80
 #define MAX5135_LINEARITY_BIT				0x02
 
 //DAC_CH selection
-#define MAX5135_DAC_CH_0						0x01
-#define MAX5135_DAC_CH_1						0x02
-#define MAX5135_DAC_CH_2						0x04
-#define MAX5135_DAC_CH_3						0x08
+#define MAX5135_DAC_CH_0						0x00
+#define MAX5135_DAC_CH_1						0x01
+#define MAX5135_DAC_CH_2						0x02
+#define MAX5135_DAC_CH_3						0x03
 
 
 #define MAX5135_DATA_NONE						0x00
@@ -45,7 +45,7 @@ void SendData(unsigned char mData);
 void MAX5135init(void);
 extern void delay_ms(unsigned int ms);
 extern void delay_us(unsigned int us);
-void MAX5135_DAC_send(unsigned char DAC1_Ch, unsigned int DAC1_val);
+void MAX5135_DAC_send(unsigned char DAC_Ch, unsigned int DAC_val);
 
 #endif
 

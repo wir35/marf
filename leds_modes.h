@@ -1,5 +1,13 @@
+/*
+ * HC595.h
+ *
+ *  Created on: 14.09.2008
+ *      Author: mamonth
+ */
+
 #ifndef LEDS_MODES_H_
 #define LEDS_MODES_H_
+
 //Union which allows to control each led on panel separately
 typedef union
 {
