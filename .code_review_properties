@@ -19,6 +19,7 @@
         <Entry name="item.type.label.irrelevant" />
         <Entry name="item.type.label.suggestion" />
         <Entry name="item.type.label.other" />
+      </FieldItem>
       <FieldItem id="Severity" default="item.label.unset">
         <Entry name="item.label.unset" />
         <Entry name="item.severity.label.critical" />
