@@ -1,0 +1,4 @@
+adc_pots_selector.c:101:6:ADC_POTS_selector_init	16	static
+adc_pots_selector.c:118:6:ADC_POTS_selector_SendByte	0	static
+adc_pots_selector.c:142:6:ADC_POTS_selector_SendDWord	8	static
+adc_pots_selector.c:157:6:ADC_POTS_selector_Ch	8	static

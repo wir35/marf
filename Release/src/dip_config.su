@@ -1,0 +1,2 @@
+dip_config.c:10:6:DipConfig_init	16	static
+dip_config.c:35:12:GetDipConfig	16	static

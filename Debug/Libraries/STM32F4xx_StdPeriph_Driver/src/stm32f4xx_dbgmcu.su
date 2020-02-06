@@ -1,0 +1,5 @@
+stm32f4xx_dbgmcu.c:58:10:DBGMCU_GetREVID	0	static
+stm32f4xx_dbgmcu.c:68:10:DBGMCU_GetDEVID	0	static
+stm32f4xx_dbgmcu.c:84:6:DBGMCU_Config	0	static
+stm32f4xx_dbgmcu.c:123:6:DBGMCU_APB1PeriphConfig	0	static
+stm32f4xx_dbgmcu.c:152:6:DBGMCU_APB2PeriphConfig	0	static

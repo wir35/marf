@@ -1,0 +1,6 @@
+HC165.c:26:6:init_HC165	32	static
+HC165.c:60:6:HC165_LatchUp	8	static
+HC165.c:71:15:HC165_GetByte	16	static
+HC165.c:98:19:HC165_GetDWord	16	static
+HC165.c:110:19:HC165_GetDWord1	16	static
+HC165.c:122:24:GetButton	16	static
