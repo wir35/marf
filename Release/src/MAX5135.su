@@ -1,4 +1,0 @@
-MAX5135.c:7:6:SendData	16	static
-MAX5135.c:16:6:MAX5135_SendPack	16	static
-MAX5135.c:29:6:MAX5135init	56	static
-MAX5135.c:93:6:MAX5135_DAC_send	4	static

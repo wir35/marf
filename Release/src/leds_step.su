@@ -1,4 +1,0 @@
-leds_step.c:17:6:LED_STEP_init	16	static
-leds_step.c:32:6:LED_STEP_SendByte	16	static
-leds_step.c:53:6:LED_STEP_SendWord	8	static
-leds_step.c:63:6:LED_STEP_LightStep	8	static

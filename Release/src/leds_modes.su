@@ -1,4 +1,0 @@
-leds_modes.c:23:6:LEDS_modes_init	16	static
-leds_modes.c:38:6:LEDS_modes_SendByte	16	static
-leds_modes.c:59:6:LEDS_modes_SendDWord	8	static
-leds_modes.c:71:6:LEDS_modes_SendStruct	8	static
