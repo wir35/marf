@@ -4,17 +4,17 @@
 typedef union
 {
 	struct {		
-		int VLevel:12;
-		int TLevel:12;
+		unsigned int VLevel:12;
+		unsigned int TLevel:12;
 		unsigned int Quantize:1;
 		unsigned int Sloped:1;
 		unsigned int FullRange:1;
-		int VoltageSource:1;
-		int Voltage0:1;
-		int Voltage2:1;
-		int Voltage4:1;
-		int Voltage6:1;
-		int Voltage8:1;
+		unsigned int VoltageSource:1;
+		unsigned int Voltage0:1;
+		unsigned int Voltage2:1;
+		unsigned int Voltage4:1;
+		unsigned int Voltage6:1;
+		unsigned int Voltage8:1;
 		unsigned int OpModeSTOP:1;
 		unsigned int OpModeSUSTAIN:1;
 		unsigned int OpModeENABLE:1;

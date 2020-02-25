@@ -17,6 +17,7 @@
 #include "data_types.h"
 #include "dip_config.h"
 #include "expander.h"
+#include "stdio.h"
 
 #define AIRCR_VECTKEY_MASK    ((uint32_t)0x05FA0000)
 
@@ -883,10 +884,12 @@ void TIM4_IRQHandler()
 	/* Calculate next step duration */		
 	StepWidth_1 = GetStepWidth(0, gSequenceStepNumber_1);
 					
-					
+
 		/* Calculate prescaler/multiplier*/
 		TIM4->PSC = (uint16_t) ((((((float) AddData[ADC_TIMEMULTIPLY_Ch_1])*3.5f)/CalConstants[ADC_TIMEMULTIPLY_Ch_1])+0.5f)*STEP_TIMER_PRESCALER);
-		
+
+	//	TIM4->PSC = (uint16_t) ((((((float) AddData[ADC_TIMEMULTIPLY_Ch_1])*3.5f)/CalConstants[ADC_TIMEMULTIPLY_Ch_1])+0.5f)*STEP_TIMER_PRESCALER);
+
 
 		if (Steps[0][gSequenceStepNumber_1].b.Sloped) {
 			//Calculate the voltage in slope mode
@@ -917,8 +920,7 @@ void TIM4_IRQHandler()
 		
 		
 		/* Increment step counter */ 
-		if ( (gSequencerMode_1 == SEQUENCER_MODE_RUN ) || 
-			(	(gSequencerMode_1 == SEQUENCER_MODE_ADVANCE) 	) 
+		if (( (gSequencerMode_1 == SEQUENCER_MODE_RUN ) || ((gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)))
 		)
 		{
 			gStepWidth_1++;
@@ -929,7 +931,9 @@ void TIM4_IRQHandler()
 		} 
 		else
 		{		
-			//Calculate next step		
+			//Calculate next step
+	//		printf("Line # :   %d \n gPrevSequencerMode_1: %d \n gSequencerMode_1: %d \n \n"  , __LINE__ ,gPrevSequencerMode_1,  gSequencerMode_1);
+
 			PreviousStep = GetStepVoltage(0, gSequenceStepNumber_1);
 
 			if ( (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)   ) { 
@@ -973,7 +977,7 @@ void TIM4_IRQHandler()
 			gStepWidth_1 = 0;
 
 			/* Generate pulse at the end of every step */
-			if (gSequencerMode_1 == SEQUENCER_MODE_RUN) {		
+			if (gSequencerMode_1 == SEQUENCER_MODE_RUN) {
 				gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
 				PULSE_LED_I_ALL_ON;
 				
@@ -987,6 +991,21 @@ void TIM4_IRQHandler()
 				TIM_Cmd(TIM14, ENABLE);
 				TIM_SetCounter(TIM14, 0x00);
 			};
+
+		if (gSequencerMode_1 == SEQUENCER_MODE_STOP) {
+					//	gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+						PULSE_LED_I_ALL_ON;
+
+						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
+							PULSE_LED_I_1_ON;
+						};
+						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
+							PULSE_LED_I_2_ON;
+						};
+
+						TIM_Cmd(TIM14, ENABLE);
+						TIM_SetCounter(TIM14, 0x00);
+					};
 		};
 	
 	if (gSequencerMode_1 == SEQUENCER_MODE_WAIT) {
@@ -1136,6 +1155,22 @@ void TIM5_IRQHandler()
 				TIM_Cmd(TIM8, ENABLE);
 				TIM_SetCounter(TIM8, 0x00);
 			}; 
+
+			if (gSequencerMode_2 == SEQUENCER_MODE_STOP) {
+								//	gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+									PULSE_LED_II_ALL_ON;
+
+									if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
+										PULSE_LED_II_1_ON;
+									};
+									if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
+										PULSE_LED_II_2_ON;
+									};
+
+									TIM_Cmd(TIM8, ENABLE);
+									TIM_SetCounter(TIM8, 0x00);
+								};
+
 		};
 	
 
@@ -2233,6 +2268,9 @@ unsigned char keyb_proc(uButtons * key)
 	
 				
 	/* Stage address ADVANCE 1 KEY*/
+
+		printf("Line # :   %d \n gPrevSequencerMode_1: %d \n gSequencerMode_1: %d \n \n"  , __LINE__ ,gPrevSequencerMode_1,  gSequencerMode_1);
+
 	if (!key->b.StageAddress1ContiniousSelect) {
 		if (gSequencerMode_1 != SEQUENCER_MODE_WAIT) {
 			gPrevSequencerMode_1 = gSequencerMode_1;
@@ -2267,17 +2305,22 @@ unsigned char keyb_proc(uButtons * key)
 	
 	if (!key->b.StageAddress1Advance) {
 		
+		printf("Line # :   %d \n gPrevSequencerMode_1: %d \n gSequencerMode_1: %d \n \n"  , __LINE__ ,gPrevSequencerMode_1,  gSequencerMode_1);
+
+
 		advanced_counter_1++;
-		if(advanced_counter_1 == 10)
+		//if(advanced_counter_1 == 10)
 		{
 		if(gSequencerMode_1 != SEQUENCER_MODE_WAIT)
 		{
-		if(gSequencerMode_1 == SEQUENCER_MODE_ADVANCE) 
+		if(gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)
 		{
 			PreviousStep = GetStepVoltage(0, gSequenceStepNumber_1);
 			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
 			gStepWidth_1 = 0;
 		}
+
+
 		else{
 			if(gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z )(gPrevSequencerMode_1 = gSequencerMode_1);
 			
@@ -2285,6 +2328,9 @@ unsigned char keyb_proc(uButtons * key)
 		}
 		gSequencerMode_1 = SEQUENCER_MODE_ADVANCE;
 						PULSE_LED_I_ALL_ON;
+
+						printf("Line # :   %d \n gPrevSequencerMode_1: %d \n gSequencerMode_1: %d \n \n"  , __LINE__ ,gPrevSequencerMode_1,  gSequencerMode_1);
+
 				
 				if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
 					PULSE_LED_I_1_ON;
@@ -2293,15 +2339,23 @@ unsigned char keyb_proc(uButtons * key)
 					PULSE_LED_I_2_ON;
 				};	
 				
+				printf("Line # :   %d \n gPrevSequencerMode_1: %d \n gSequencerMode_1: %d \n \n"  , __LINE__ ,gPrevSequencerMode_1,  gSequencerMode_1);
+
+
 				TIM_Cmd(TIM14, ENABLE);
 				TIM_SetCounter(TIM14, 0x00);
+
+				printf("Line # :   %d \n gPrevSequencerMode_1: %d \n gSequencerMode_1: %d \n \n"  , __LINE__ ,gPrevSequencerMode_1,  gSequencerMode_1);
+
+
+
 	}	}
 	} else advanced_counter_1 = 0;
 	
 		if (!key->b.StageAddress2Advance) {
 			
 		advanced_counter_2++;
-		if(advanced_counter_2 == 10)
+		//if(advanced_counter_2 == 10)
 		{
 		if(gSequencerMode_2 != SEQUENCER_MODE_WAIT)
 				{
@@ -2310,11 +2364,22 @@ unsigned char keyb_proc(uButtons * key)
 			PreviousStep_2 = GetStepVoltage(1, gSequenceStepNumber_2);
 			gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
 			gStepWidth_2 = 0;
+
+			printf("Line # :   %d \n gPrevSequencerMode_2: %d \n gSequencerMode_2: %d \n \n"  , __LINE__ ,gPrevSequencerMode_2,  gSequencerMode_2);
+
 		}
+
+
+
+
 		else 
 		{
 			if(gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z )(gPrevSequencerMode_2 = gSequencerMode_2);
 			gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+
+			printf("Line # :   %d \n gPrevSequencerMode_2: %d \n gSequencerMode_2: %d \n \n"  , __LINE__ ,gPrevSequencerMode_2,  gSequencerMode_2);
+
+
 		}
 		gSequencerMode_2 = SEQUENCER_MODE_ADVANCE;
 				PULSE_LED_II_ALL_ON;
@@ -2325,7 +2390,8 @@ unsigned char keyb_proc(uButtons * key)
 				if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
 					PULSE_LED_II_2_ON;
 				};	
-				
+				printf("Line # :   %d \n gPrevSequencerMode_2: %d \n gSequencerMode_2: %d \n \n"  , __LINE__ ,gPrevSequencerMode_2,  gSequencerMode_2);
+
 				TIM_Cmd(TIM8, ENABLE);
 			TIM_SetCounter(TIM8, 0x00);
 	
@@ -2693,8 +2759,13 @@ int main(void)
 	gSequencerMode_1 = SEQUENCER_MODE_STOP;
 	gSequencerMode_2 = SEQUENCER_MODE_STOP;
 	
+
+
+	printf("HI");
+
+
 //Scan initial state	
-	key_state == GetButton();
+	key_state = GetButton();
 	myButtons.value = key_state;
 	
 	if(!myButtons.b.StageAddress1Advance) 
