@@ -176,24 +176,25 @@ uint16_t counterR = 0;
 void ADC_IRQHandler()
 {
 	unsigned char NeedInc = 0, i;
-
+	// Seems like a bad idea to switch the MUX in the interrupt that reads the ADCs.
+	// Do it at at the end now GAM 05/04/2020 
 	//If expander is connected we should scan its sliders
-	if(Is_Expander_Present())
-	{
-		if (ADC_POT_sel_cnt >= 71) {
-			ADC_POTS_selector_Ch(0);
-		} else {
-			ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1);
-		};
-	}
-	else
-	{
-		if (ADC_POT_sel_cnt >= 39) {
-			ADC_POTS_selector_Ch(0);
-		} else {
-			ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1);
-		};
-	}
+	/* if(Is_Expander_Present()) */
+	/* { */
+	/* 	if (ADC_POT_sel_cnt >= 71) { */
+	/* 		ADC_POTS_selector_Ch(0); */
+	/* 	} else { */
+	/* 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1); */
+	/* 	}; */
+	/* } */
+	/* else */
+	/* { */
+	/* 	if (ADC_POT_sel_cnt >= 39) { */
+	/* 		ADC_POTS_selector_Ch(0); */
+	/* 	} else { */
+	/* 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1); */
+	/* 	}; */
+	/* } */
 
 	//ADC1 conversation complete
 	if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
@@ -311,25 +312,29 @@ void ADC_IRQHandler()
 
 	};
 
-	//Calculate next channel to measure
+		//Calculate next channel to measure
+		// and now also switch the MUX here. GAM 05/04/2020
 	if(Is_Expander_Present())
 	{
-	if (NeedInc) {
+	  if (NeedInc) {
 		ADC_POT_sel_cnt++;
 		if (ADC_POT_sel_cnt >= 72) {//40
 			ADC_POT_sel_cnt = 0;
 		};
-	};
-}
+		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
+		delay_us(10);
+	  };
+	}
 	else
 	{
-			if (NeedInc) {
+	  if (NeedInc) {
 		ADC_POT_sel_cnt++;
 		if (ADC_POT_sel_cnt >= 40) {//40
 			ADC_POT_sel_cnt = 0;
-			delay_us(10);
 		};
-	};
+		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
+		delay_us(10);
+	  };
 	}
 };
 
