@@ -175,7 +175,7 @@ uint16_t counterR = 0;
 //ADC interrupt handler
 void ADC_IRQHandler()
 {
-	unsigned char NeedInc = 0, i;
+  unsigned char NeedInc = 0; //, i; // i not needed if not using boxcar averaging scheme
 	// Seems like a bad idea to switch the MUX in the interrupt that reads the ADCs.
 	// Do it at at the end now GAM 05/04/2020 
 	//If expander is connected we should scan its sliders
@@ -207,18 +207,18 @@ void ADC_IRQHandler()
 						Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
 					};
 			} else {
-				average_array[1][ADC_POT_sel_cnt][average_index[1][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR);
+				/* average_array[1][ADC_POT_sel_cnt][average_index[1][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR); */
 
-				average_index[1][ADC_POT_sel_cnt]++;
-				if(average_index[1][ADC_POT_sel_cnt] == NUMS) average_index[1][ADC_POT_sel_cnt] = 0;
+				/* average_index[1][ADC_POT_sel_cnt]++; */
+				/* if(average_index[1][ADC_POT_sel_cnt] == NUMS) average_index[1][ADC_POT_sel_cnt] = 0; */
 
-				acc = 0;
-				for(i = 0; i < NUMS; i++)
-				{
-					acc += average_array[1][ADC_POT_sel_cnt][i];
-				}
-				Steps[1][ADC_POT_sel_cnt].b.VLevel = acc/NUMS;
-
+				/* acc = 0; */
+				/* for(i = 0; i < NUMS; i++) */
+				/* { */
+				/* 	acc += average_array[1][ADC_POT_sel_cnt][i]; */
+				/* } */
+				/* Steps[1][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
+				Steps[1][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4; 
 				//Steps[1][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel)/2;
 			};
 			if ( (Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
@@ -227,18 +227,19 @@ void ADC_IRQHandler()
 						Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
 			  };
 			} else {
-								average_array[0][ADC_POT_sel_cnt][average_index[0][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR);
+			  /* average_array[0][ADC_POT_sel_cnt][average_index[0][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR); */
+								
+			  /* 	average_index[0][ADC_POT_sel_cnt]++; */
+			  /* 	if(average_index[0][ADC_POT_sel_cnt] == NUMS) average_index[0][ADC_POT_sel_cnt] = 0; */
 
-				average_index[0][ADC_POT_sel_cnt]++;
-				if(average_index[0][ADC_POT_sel_cnt] == NUMS) average_index[0][ADC_POT_sel_cnt] = 0;
-
-				acc = 0;
-				for(i = 0; i < NUMS; i++)
-				{
-					acc += average_array[0][ADC_POT_sel_cnt][i];
-				}
-				Steps[0][ADC_POT_sel_cnt].b.VLevel = acc/NUMS;
-				//Steps[0][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel)/2;
+			  /* 	acc = 0; */
+			  /* 	for(i = 0; i < NUMS; i++) */
+			  /* 	{ */
+			  /* 		acc += average_array[0][ADC_POT_sel_cnt][i]; */
+			  /* 	} */
+			  /* 	Steps[0][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
+			  //Steps[0][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel)/2;
+			  Steps[0][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4; 
 			};
 			NeedInc = 1;
 		};
@@ -265,8 +266,10 @@ void ADC_IRQHandler()
 
 			//Calculate average of 2 measurements for time sliders
 				if ((ADC_POT_sel_cnt>=56) && (ADC_POT_sel_cnt<=71)) {
-				Steps[0][ADC_POT_sel_cnt-40].b.TLevel = (Steps[0][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
-				Steps[1][ADC_POT_sel_cnt-40].b.TLevel = (Steps[1][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
+				  Steps[0][ADC_POT_sel_cnt-40].b.TLevel += ((unsigned int) ADC1->DR - Steps[0][ADC_POT_sel_cnt-40].b.TLevel) >> 4 ;
+				  Steps[1][ADC_POT_sel_cnt-40].b.TLevel += ((unsigned int) ADC1->DR - Steps[1][ADC_POT_sel_cnt-40].b.TLevel) >> 4 ; 
+				    //    Steps[0][ADC_POT_sel_cnt-40].b.TLevel = (Steps0][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
+				    //    Steps[1][ADC_POT_sel_cnt-40].b.TLevel = (Steps[1][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
 				NeedInc = 1;
 			};
 		}
@@ -281,7 +284,8 @@ void ADC_IRQHandler()
 		  }
 		  else
 		    {
-			Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;		      
+		      Steps[0][ADC_POT_sel_cnt-24].b.TLevel += ((unsigned int) ADC1->DR - Steps[0][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ; 
+			// Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;		      
 		    }
 		  if (Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting?
 		    if ((unsigned int)Steps[1][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting
@@ -291,7 +295,8 @@ void ADC_IRQHandler()
 		  }
 		  else
 		    {
-			Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;		      
+		      Steps[1][ADC_POT_sel_cnt-24].b.TLevel += ((unsigned int) ADC1->DR - Steps[1][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ; 
+			//	Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;		      
 		    }
 		  NeedInc = 1;
 		};
@@ -322,7 +327,7 @@ void ADC_IRQHandler()
 			ADC_POT_sel_cnt = 0;
 		};
 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
-		delay_us(10);
+		delay_us(10); // don't know if there is time for this!
 	  };
 	}
 	else
@@ -353,7 +358,7 @@ void mADC_init(void)
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 
 	TIM_TimeBaseStructInit(&TimeBaseInit);
-	TimeBaseInit.TIM_Prescaler 			= 0;
+	TimeBaseInit.TIM_Prescaler 			= 1; 
 	TimeBaseInit.TIM_CounterMode 		= TIM_CounterMode_Up;
 	TimeBaseInit.TIM_Period 				= 4200-1;// for 40kHz
 	TimeBaseInit.TIM_ClockDivision 	= TIM_CKD_DIV1;
