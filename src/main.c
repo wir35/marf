@@ -348,17 +348,17 @@ void mADC_init(void)
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 
 	TIM_TimeBaseStructInit(&TimeBaseInit);
-  TimeBaseInit.TIM_Prescaler 			= 0;
+	TimeBaseInit.TIM_Prescaler 			= 0;
 	TimeBaseInit.TIM_CounterMode 		= TIM_CounterMode_Up;
-  TimeBaseInit.TIM_Period 				= 4200-1;// for 40kHz
+	TimeBaseInit.TIM_Period 				= 4200-1;// for 40kHz
 	TimeBaseInit.TIM_ClockDivision 	= TIM_CKD_DIV1;
-  TIM_TimeBaseInit(TIM2, &TimeBaseInit);
+	TIM_TimeBaseInit(TIM2, &TimeBaseInit);
 
 	TIM_SelectOutputTrigger(TIM2, TIM_TRGOSource_OC2Ref);
 	TIM_CCxCmd(TIM2, TIM_Channel_2, TIM_CCx_Enable);
 	TIM_SetCompare2(TIM2, 1);
 	TIM2->CCMR1 |= TIM_CCMR1_OC2M;
-  TIM_Cmd(TIM2, ENABLE);
+	TIM_Cmd(TIM2, ENABLE);
 
 	//ADC Init
 	NVIC_SetPriority (ADC_IRQn, 1);
@@ -2610,6 +2610,7 @@ void Calibration(void)
 	uButtons myButtons;
 	uLeds mLeds;
 	//	volatile unsigned long long int key_state;
+	myButtons.value = GetButton();
 
 	mLeds.value[0]  	= 0xFF;
 	mLeds.value[1]  	= 0xFF;
