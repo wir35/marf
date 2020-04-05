@@ -351,6 +351,19 @@ void mADC_init(void)
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC2, ENABLE);
 
+
+	// lines added 25/3/2020 GAM to try to slow down the ADC clock
+	// I think it was running at 42MHz before which is too fast.
+	// 21MHz is in range and still fast enough, 
+	  ADC_CommonInitTypeDef ADC_CommonInitStructure;
+
+	  ADC_CommonInitStructure.ADC_Mode = ADC_Mode_Independent;
+	  ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div4;
+	  ADC_CommonInitStructure.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
+	  ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
+	  ADC_CommonInit(&ADC_CommonInitStructure);
+	  // end GAM code
+	  
 	ADC_StructInit(&ADC_InitType);
 	ADC_InitType.ADC_ContinuousConvMode 	= DISABLE;
 	ADC_InitType.ADC_DataAlign 						= ADC_DataAlign_Right;
