@@ -1,4 +1,4 @@
-asd#include <stm32f4xx.h>
+#include <stm32f4xx.h>
 #include "stm32f4xx_syscfg.h"
 #include <stm32f4xx_rcc.h>
 #include <stm32f4xx_gpio.h>
@@ -202,7 +202,7 @@ void ADC_IRQHandler()
 		if (  (ADC_POT_sel_cnt<=15)) {
 			if ( (Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
 			  // Add Steven's range-check in cute bitwise form
-			  if (!((unsigned int) (ADC1->DR) >> 4 ^ (unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel >>4 )) {
+			  if ((unsigned int) (ADC1->DR) >> 4 == (unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel >>4 ) {
 						Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
 					};
 			} else {
@@ -222,7 +222,7 @@ void ADC_IRQHandler()
 			};
 			if ( (Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
 			  // Check if voltage slider value is close to saved value and if so unstick
-  			  if (!((unsigned int) (ADC1->DR) >> 4 ^ (unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel >>4 )) {
+  			  if ((unsigned int) (ADC1->DR) >> 4 == (unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel >>4 ) {
 						Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
 			  };
 			} else {
@@ -2606,10 +2606,10 @@ void UpdateStepSection(void)
 
 void Calibration(void)
 {
-	unsigned long i;
+	unsigned long i=0;
 	uButtons myButtons;
 	uLeds mLeds;
-	volatile unsigned long long int key_state;
+	//	volatile unsigned long long int key_state;
 
 	mLeds.value[0]  	= 0xFF;
 	mLeds.value[1]  	= 0xFF;
