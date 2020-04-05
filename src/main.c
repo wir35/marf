@@ -1,4 +1,4 @@
-#include <stm32f4xx.h>
+asd#include <stm32f4xx.h>
 #include "stm32f4xx_syscfg.h"
 #include <stm32f4xx_rcc.h>
 #include <stm32f4xx_gpio.h>
@@ -269,10 +269,30 @@ void ADC_IRQHandler()
 				NeedInc = 1;
 			};
 		}
+		// Time sliders for steps 1-16 are pots 24--39 inclusive. 
 		if ((ADC_POT_sel_cnt>=24) && (ADC_POT_sel_cnt<=39)) {
-			Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
-			Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
-			NeedInc = 1;
+
+		  if (Steps[0][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting?
+		    if ((unsigned int)Steps[0][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting
+		      {
+			Steps[0][ADC_POT_sel_cnt-24].b.WaitTimeSlider = 0;
+		      }
+		  }
+		  else
+		    {
+			Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;		      
+		    }
+		  if (Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting?
+		    if ((unsigned int)Steps[1][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting
+		      {
+			Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider = 0;
+		      }
+		  }
+		  else
+		    {
+			Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;		      
+		    }
+		  NeedInc = 1;
 		};
 
 
