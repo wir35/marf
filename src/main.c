@@ -160,6 +160,7 @@ float divider;
 volatile uint16_t average_array[2][32][NUMS];
 volatile uint16_t average_index[2][32];
 volatile long long acc;
+volatile uint16_t steps_lp[2][32]; 
 
 unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum);
 
@@ -218,7 +219,9 @@ void ADC_IRQHandler()
 				/* 	acc += average_array[1][ADC_POT_sel_cnt][i]; */
 				/* } */
 				/* Steps[1][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
-				Steps[1][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4; 
+			  //				Steps[1][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4; 
+			  steps_lp[1][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[1][ADC_POT_sel_cnt]) >> 4;
+			  Steps[1][ADC_POT_sel_cnt].b.VLevel += (steps_lp[1][ADC_POT_sel_cnt] - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4; 
 				//Steps[1][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel)/2;
 			};
 			if ( (Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
@@ -239,7 +242,9 @@ void ADC_IRQHandler()
 			  /* 	} */
 			  /* 	Steps[0][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
 			  //Steps[0][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel)/2;
-			  Steps[0][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4; 
+			  steps_lp[0][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[0][ADC_POT_sel_cnt]) >> 4;
+			  Steps[0][ADC_POT_sel_cnt].b.VLevel += (steps_lp[0][ADC_POT_sel_cnt] - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4; 
+			  //			  Steps[0][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4; 
 			};
 			NeedInc = 1;
 		};
