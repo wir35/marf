@@ -201,7 +201,8 @@ void ADC_IRQHandler()
 		//Calculate average of 10 measurements for voltage sliders
 		if (  (ADC_POT_sel_cnt<=15)) {
 			if ( (Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
-					if ( (unsigned int) (ADC1->DR) == (unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel ) {
+			  // Add Steven's range-check in cute bitwise form
+			  if (!((unsigned int) (ADC1->DR) >> 4 ^ (unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel >>4 )) {
 						Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
 					};
 			} else {
@@ -220,9 +221,10 @@ void ADC_IRQHandler()
 				//Steps[1][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel)/2;
 			};
 			if ( (Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
-			if ( (unsigned int) (ADC1->DR) == (unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel ) {
+			  // Check if voltage slider value is close to saved value and if so unstick
+  			  if (!((unsigned int) (ADC1->DR) >> 4 ^ (unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel >>4 )) {
 						Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
-			};
+			  };
 			} else {
 								average_array[0][ADC_POT_sel_cnt][average_index[0][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR);
 
