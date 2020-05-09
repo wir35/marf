@@ -92,7 +92,7 @@ void MAX5135init(void)
 
 void MAX5135_DAC_send(unsigned char DAC_Ch, unsigned int DAC_val)
 {
-	uint8_t msb, lsb;
+	uint8_t msb = 0,lsb = 0;
 	if(DAC_val > 1023) DAC_val = 1023;
 	
 	switch(DAC_Ch)

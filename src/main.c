@@ -142,7 +142,7 @@ volatile uint8_t StartFilter_2	= 0;
 volatile uint8_t gSequenceReadvance_1 = 0;
 volatile uint8_t gSequenceReadvance_2 = 0;
 
-#define START_TIMER_SUSTAIN 	40				//1 = 250 uSec, 2 = 500 uSec, 3 = 0.75 mSec, 4 = 1 mSec, etc...
+#define START_TIMER_SUSTAIN 	1			//1 = 250 uSec, 2 = 500 uSec, 3 = 0.75 mSec, 4 = 1 mSec, etc...
 
 //Dip switch state
 volatile uDipConfig gDipConfig;
@@ -160,6 +160,8 @@ float divider;
 volatile uint16_t average_array[2][32][NUMS];
 volatile uint16_t average_index[2][32];
 volatile long long acc;
+volatile uint16_t steps_lp[2][32];
+
 
 unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum);
 
@@ -172,28 +174,32 @@ volatile unsigned char advanced_counter_1 = 0, advanced_counter_2 = 0;
 uint16_t counterL = 0;
 uint16_t counterR = 0;
 
+uint16_t readings;
+uint16_t i;
+
 //ADC interrupt handler
 void ADC_IRQHandler()
 {
-	unsigned char NeedInc = 0, i;
-
+  unsigned char NeedInc = 0; //, i; // i not needed if not using boxcar averaging scheme
+	// Seems like a bad idea to switch the MUX in the interrupt that reads the ADCs.
+	// Do it at at the end now GAM 05/04/2020
 	//If expander is connected we should scan its sliders
-	if(Is_Expander_Present())
-	{
-		if (ADC_POT_sel_cnt >= 71) {
-			ADC_POTS_selector_Ch(0);
-		} else {
-			ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1);
-		};
-	}
-	else
-	{
-		if (ADC_POT_sel_cnt >= 39) {
-			ADC_POTS_selector_Ch(0);
-		} else {
-			ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1);
-		};
-	}
+	/* if(Is_Expander_Present()) */
+	/* { */
+	/* 	if (ADC_POT_sel_cnt >= 71) { */
+	/* 		ADC_POTS_selector_Ch(0); */
+	/* 	} else { */
+	/* 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1); */
+	/* 	}; */
+	/* } */
+	/* else */
+	/* { */
+	/* 	if (ADC_POT_sel_cnt >= 39) { */
+	/* 		ADC_POTS_selector_Ch(0); */
+	/* 	} else { */
+	/* 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1); */
+	/* 	}; */
+	/* } */
 
 	//ADC1 conversation complete
 	if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
@@ -201,41 +207,48 @@ void ADC_IRQHandler()
 		//Calculate average of 10 measurements for voltage sliders
 		if (  (ADC_POT_sel_cnt<=15)) {
 			if ( (Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
-					if ( (unsigned int) (ADC1->DR) == (unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel ) {
+			  // Add Steven's range-check in cute bitwise form
+			  if ((unsigned int) (ADC1->DR) >> 4 == (unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel >>4 ) {
 						Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
 					};
 			} else {
-				average_array[1][ADC_POT_sel_cnt][average_index[1][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR);
+				/* average_array[1][ADC_POT_sel_cnt][average_index[1][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR); */
 
-				average_index[1][ADC_POT_sel_cnt]++;
-				if(average_index[1][ADC_POT_sel_cnt] == NUMS) average_index[1][ADC_POT_sel_cnt] = 0;
+				/* average_index[1][ADC_POT_sel_cnt]++; */
+				/* if(average_index[1][ADC_POT_sel_cnt] == NUMS) average_index[1][ADC_POT_sel_cnt] = 0; */
 
-				acc = 0;
-				for(i = 0; i < NUMS; i++)
-				{
-					acc += average_array[1][ADC_POT_sel_cnt][i];
-				}
-				Steps[1][ADC_POT_sel_cnt].b.VLevel = acc/NUMS;
-
+				/* acc = 0; */
+				/* for(i = 0; i < NUMS; i++) */
+				/* { */
+				/* 	acc += average_array[1][ADC_POT_sel_cnt][i]; */
+				/* } */
+				/* Steps[1][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
+			  //				Steps[1][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4;
+			  steps_lp[1][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[1][ADC_POT_sel_cnt]) >> 4;
+			  Steps[1][ADC_POT_sel_cnt].b.VLevel += (steps_lp[1][ADC_POT_sel_cnt] - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4;
 				//Steps[1][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel)/2;
 			};
 			if ( (Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
-			if ( (unsigned int) (ADC1->DR) == (unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel ) {
+			  // Check if voltage slider value is close to saved value and if so unstick
+  			  if ((unsigned int) (ADC1->DR) >> 4 == (unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel >>4 ) {
 						Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
-			};
+			  };
 			} else {
-								average_array[0][ADC_POT_sel_cnt][average_index[0][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR);
+			  /* average_array[0][ADC_POT_sel_cnt][average_index[0][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR); */
 
-				average_index[0][ADC_POT_sel_cnt]++;
-				if(average_index[0][ADC_POT_sel_cnt] == NUMS) average_index[0][ADC_POT_sel_cnt] = 0;
+			  /* 	average_index[0][ADC_POT_sel_cnt]++; */
+			  /* 	if(average_index[0][ADC_POT_sel_cnt] == NUMS) average_index[0][ADC_POT_sel_cnt] = 0; */
 
-				acc = 0;
-				for(i = 0; i < NUMS; i++)
-				{
-					acc += average_array[0][ADC_POT_sel_cnt][i];
-				}
-				Steps[0][ADC_POT_sel_cnt].b.VLevel = acc/NUMS;
-				//Steps[0][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel)/2;
+			  /* 	acc = 0; */
+			  /* 	for(i = 0; i < NUMS; i++) */
+			  /* 	{ */
+			  /* 		acc += average_array[0][ADC_POT_sel_cnt][i]; */
+			  /* 	} */
+			  /* 	Steps[0][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
+			  //Steps[0][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel)/2;
+			  steps_lp[0][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[0][ADC_POT_sel_cnt]) >> 4;
+			  Steps[0][ADC_POT_sel_cnt].b.VLevel += (steps_lp[0][ADC_POT_sel_cnt] - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4;
+			  //			  Steps[0][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4;
 			};
 			NeedInc = 1;
 		};
@@ -262,15 +275,39 @@ void ADC_IRQHandler()
 
 			//Calculate average of 2 measurements for time sliders
 				if ((ADC_POT_sel_cnt>=56) && (ADC_POT_sel_cnt<=71)) {
-				Steps[0][ADC_POT_sel_cnt-40].b.TLevel = (Steps[0][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
-				Steps[1][ADC_POT_sel_cnt-40].b.TLevel = (Steps[1][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
+				  Steps[0][ADC_POT_sel_cnt-40].b.TLevel += ((unsigned int) ADC1->DR - Steps[0][ADC_POT_sel_cnt-40].b.TLevel) >> 4 ;
+				  Steps[1][ADC_POT_sel_cnt-40].b.TLevel += ((unsigned int) ADC1->DR - Steps[1][ADC_POT_sel_cnt-40].b.TLevel) >> 4 ;
+				    //    Steps[0][ADC_POT_sel_cnt-40].b.TLevel = (Steps0][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
+				    //    Steps[1][ADC_POT_sel_cnt-40].b.TLevel = (Steps[1][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
 				NeedInc = 1;
 			};
 		}
+		// Time sliders for steps 1-16 are pots 24--39 inclusive.
 		if ((ADC_POT_sel_cnt>=24) && (ADC_POT_sel_cnt<=39)) {
-			Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
-			Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
-			NeedInc = 1;
+
+		  if (Steps[0][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting?
+		    if ((unsigned int)Steps[0][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting
+		      {
+			Steps[0][ADC_POT_sel_cnt-24].b.WaitTimeSlider = 0;
+		      }
+		  }
+		  else
+		    {
+		      Steps[0][ADC_POT_sel_cnt-24].b.TLevel += ((unsigned int) ADC1->DR - Steps[0][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ;
+			// Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
+		    }
+		  if (Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting?
+		    if ((unsigned int)Steps[1][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting
+		      {
+			Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider = 0;
+		      }
+		  }
+		  else
+		    {
+		      Steps[1][ADC_POT_sel_cnt-24].b.TLevel += ((unsigned int) ADC1->DR - Steps[1][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ;
+			//	Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
+		    }
+		  NeedInc = 1;
 		};
 
 
@@ -289,25 +326,29 @@ void ADC_IRQHandler()
 
 	};
 
-	//Calculate next channel to measure
+		//Calculate next channel to measure
+		// and now also switch the MUX here. GAM 05/04/2020
 	if(Is_Expander_Present())
 	{
-	if (NeedInc) {
+	  if (NeedInc) {
 		ADC_POT_sel_cnt++;
 		if (ADC_POT_sel_cnt >= 72) {//40
 			ADC_POT_sel_cnt = 0;
 		};
-	};
-}
+		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
+		delay_us(10); // don't know if there is time for this!
+	  };
+	}
 	else
 	{
-			if (NeedInc) {
+	  if (NeedInc) {
 		ADC_POT_sel_cnt++;
 		if (ADC_POT_sel_cnt >= 40) {//40
 			ADC_POT_sel_cnt = 0;
-			delay_us(10);
 		};
-	};
+		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
+		delay_us(10);
+	  };
 	}
 };
 
@@ -326,7 +367,7 @@ void mADC_init(void)
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 
 	TIM_TimeBaseStructInit(&TimeBaseInit);
-  TimeBaseInit.TIM_Prescaler 			= 0;
+  TimeBaseInit.TIM_Prescaler 			= 0;	//ADC1 Timer
 	TimeBaseInit.TIM_CounterMode 		= TIM_CounterMode_Up;
   TimeBaseInit.TIM_Period 				= 4200-1;// for 40kHz
 	TimeBaseInit.TIM_ClockDivision 	= TIM_CKD_DIV1;
@@ -541,17 +582,51 @@ void EXTI9_5_IRQHandler()
 {
 	//1 Section
 	//1 LH
+
 	if (EXTI->PR & (1<<8)) {
+		gPrevSequencerMode_1 = gSequencerMode_1;
+
 
 		if((gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z) && (gSequencerMode_1 != SEQUENCER_MODE_WAIT) && (gSequencerMode_1 != SEQUENCER_MODE_RUN))
 		{
 			gSequencerMode_1 = SEQUENCER_MODE_RUN;
 			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+
+			PULSE_LED_I_ALL_ON;
+						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
+							PULSE_LED_I_1_ON;
+						};
+						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
+							PULSE_LED_I_2_ON;
+						};
+
+						TIM_Cmd(TIM14, ENABLE);
+						TIM_SetCounter(TIM14, 0x00);
 		}
+
+		//Code for firing pulses on step after Enabled step (Enable Mode). If signal is high, set sequencer mode to run, increment step counter, and fire pulses if set.  SB 4/24/20
 		if(gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z)
 		{
 			InitStart_1_SignalTimer();
-		}
+			gSequencerMode_1 = SEQUENCER_MODE_RUN;
+			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+
+			PULSE_LED_I_ALL_ON;
+			if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
+				PULSE_LED_I_1_ON;
+			};
+			if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
+				PULSE_LED_I_2_ON;
+			};
+
+			TIM_Cmd(TIM14, ENABLE);
+			TIM_SetCounter(TIM14, 0x00);
+}
+
+			if (gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z)
+			{
+				InitStart_1_SignalTimer();
+			};
 
 		EXTI_ClearITPendingBit(EXTI_Line8);
 	};
@@ -564,11 +639,40 @@ void EXTI9_5_IRQHandler()
 		{
 			gSequencerMode_2 = SEQUENCER_MODE_RUN;
 			gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+
+			PULSE_LED_II_ALL_ON;
+									if (Steps[0][gSequenceStepNumber_2].b.OutputPulse1) {
+										PULSE_LED_II_1_ON;
+									};
+									if (Steps[0][gSequenceStepNumber_2].b.OutputPulse2) {
+										PULSE_LED_II_2_ON;
+									};
+
+									TIM_Cmd(TIM8, ENABLE);
+									TIM_SetCounter(TIM8, 0x00);
 		}
 		if(gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z)
 		{
 			InitStart_2_SignalTimer();
+						gSequencerMode_2 = SEQUENCER_MODE_RUN;
+						gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+
+						PULSE_LED_II_ALL_ON;
+						if (Steps[0][gSequenceStepNumber_2].b.OutputPulse1) {
+							PULSE_LED_II_1_ON;
+						};
+						if (Steps[0][gSequenceStepNumber_2].b.OutputPulse2) {
+							PULSE_LED_II_2_ON;
+						};
+
+						TIM_Cmd(TIM8, ENABLE);
+						TIM_SetCounter(TIM8, 0x00);
 		}
+
+		if(gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z)
+						{
+							InitStart_1_SignalTimer();
+						}
 
 		EXTI_ClearITPendingBit(EXTI_Line6);
 	 };
@@ -820,6 +924,8 @@ unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum)
 */
 unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum)
 {
+
+
 	unsigned char ret_val = 0;
 	unsigned char isLastStage = 0;
 	unsigned char tmp=0;
@@ -864,7 +970,8 @@ unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum)
 		};
 	};
 	/* ENDOF: Ã�â€¢Ã‘ï¿½Ã�Â»Ã�Â¸ Ã‘Ë†Ã�Â°Ã�Â³ Ã�Â·Ã�Â°Ã�ÂºÃ�Â¾Ã�Â½Ã‘â€¡Ã�Â¸Ã�Â»Ã‘ï¿½Ã‘ï¿½ - Ã�Â¿Ã�ÂµÃ‘â‚¬Ã�ÂµÃ‘â€¦Ã�Â¾Ã�Â´Ã�Â¸Ã�Â¼ Ã�Â½Ã�Â° Ã‘ï¿½Ã�Â»Ã�ÂµÃ�Â´Ã‘Æ’Ã‘Å½Ã‘â€°Ã�Â¸Ã�Â¹ */
-	return ret_val;
+
+    return ret_val;
 };
 
 /*
@@ -886,9 +993,8 @@ void TIM4_IRQHandler()
 
 
 		/* Calculate prescaler/multiplier*/
-		TIM4->PSC = (uint16_t) ((((((float) AddData[ADC_TIMEMULTIPLY_Ch_1])*3.5f)/CalConstants[ADC_TIMEMULTIPLY_Ch_1])+0.5f)*STEP_TIMER_PRESCALER);
 
-	//	TIM4->PSC = (uint16_t) ((((((float) AddData[ADC_TIMEMULTIPLY_Ch_1])*3.5f)/CalConstants[ADC_TIMEMULTIPLY_Ch_1])+0.5f)*STEP_TIMER_PRESCALER);
+		TIM4->PSC = (uint16_t) ((((((float) AddData[ADC_TIMEMULTIPLY_Ch_1])*3.5f)/CalConstants[ADC_TIMEMULTIPLY_Ch_1])+0.5f)*STEP_TIMER_PRESCALER);
 
 
 		if (Steps[0][gSequenceStepNumber_1].b.Sloped) {
@@ -920,23 +1026,21 @@ void TIM4_IRQHandler()
 
 
 		/* Increment step counter */
-		if (( (gSequencerMode_1 == SEQUENCER_MODE_RUN ) || ((gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)))
-		)
+		if ((gSequencerMode_1 == SEQUENCER_MODE_RUN)|| ((gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)))
 		{
 			gStepWidth_1++;
 		};
 
 		if ((gStepWidth_1 < StepWidth_1)) {
-
 		}
 		else
 		{
 			//Calculate next step
-
 			PreviousStep = GetStepVoltage(0, gSequenceStepNumber_1);
 
+
 			if ( (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)   ) {
-				gSequencerMode_1 = gPrevSequencerMode_1;
+				gSequencerMode_1 =  SEQUENCER_MODE_STOP;
 			};
 
 			if (Steps[0][gSequenceStepNumber_1].b.OpModeSTOP) {
@@ -951,20 +1055,16 @@ void TIM4_IRQHandler()
 				{
 					gPrevSequencerMode_1 = gSequencerMode_1;
 					gSequencerMode_1 = SEQUENCER_MODE_WAIT_HI_Z;
-				}
-				}
-			};
+				};
+				};
 
-			if((Steps[0][gSequenceStepNumber_1].b.OpModeSUSTAIN))  {
+			};
+			if ( (Steps[0][gSequenceStepNumber_1].b.OpModeSUSTAIN)) {
 				if( (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1))
 				{
-					if(gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z)
-					{
-						gPrevSequencerMode_1 = gSequencerMode_1;
-						gSequencerMode_1 = SEQUENCER_MODE_STAY_HI_Z;
-						InitStart_1_SignalTimer();
-					}
-				}
+					gPrevSequencerMode_1 = gSequencerMode_1;
+					gSequencerMode_1 = SEQUENCER_MODE_STAY_HI_Z;
+				};
 			};
 
 			if ( (!(Steps[0][gSequenceStepNumber_1].b.OpModeSTOP)) &&
@@ -976,8 +1076,11 @@ void TIM4_IRQHandler()
 			gStepWidth_1 = 0;
 
 			/* Generate pulse at the end of every step */
+
+
 			if (gSequencerMode_1 == SEQUENCER_MODE_RUN) {
 				gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+
 				PULSE_LED_I_ALL_ON;
 
 				if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
@@ -992,7 +1095,28 @@ void TIM4_IRQHandler()
 			};
 
 		if (gSequencerMode_1 == SEQUENCER_MODE_STOP) {
-					//	gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+
+			//gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+
+						PULSE_LED_I_ALL_ON;
+
+						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
+							PULSE_LED_I_1_ON;
+						};
+						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
+							PULSE_LED_I_2_ON;
+						};
+
+
+
+						TIM_Cmd(TIM14, ENABLE);
+						TIM_SetCounter(TIM14, 0x00);
+					};
+
+
+		if (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE) {
+			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+
 						PULSE_LED_I_ALL_ON;
 
 						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
@@ -1098,9 +1222,10 @@ void TIM5_IRQHandler()
 		if ((gStepWidth_2 < StepWidth_2)) {
 		} else {
 			PreviousStep_2 = GetStepVoltage(1, gSequenceStepNumber_2);
+
 			//Calculate next step
 			if((gSequencerMode_2 == SEQUENCER_MODE_ADVANCE)) {
-				gSequencerMode_2 = gPrevSequencerMode_2;
+				gSequencerMode_2 = SEQUENCER_MODE_STOP;
 			};
 
 			if (Steps[1][gSequenceStepNumber_2].b.OpModeSTOP) {
@@ -1115,8 +1240,8 @@ void TIM5_IRQHandler()
 					{
 						gPrevSequencerMode_2 = gSequencerMode_2;
 						gSequencerMode_2 = SEQUENCER_MODE_WAIT_HI_Z;
-					}
-				}
+					};
+				};
 		};
 
 			if ( (Steps[1][gSequenceStepNumber_2].b.OpModeSUSTAIN)) {
@@ -1156,20 +1281,20 @@ void TIM5_IRQHandler()
 			};
 
 			if (gSequencerMode_2 == SEQUENCER_MODE_STOP) {
-								//	gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-									PULSE_LED_II_ALL_ON;
+								//gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
 
-									if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-										PULSE_LED_II_1_ON;
-									};
-									if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-										PULSE_LED_II_2_ON;
-									};
+							PULSE_LED_II_ALL_ON;
 
-									TIM_Cmd(TIM8, ENABLE);
-									TIM_SetCounter(TIM8, 0x00);
-								};
+							if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
+								PULSE_LED_II_1_ON;
+							};
+							if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
+								PULSE_LED_II_2_ON;
+							};
 
+							TIM_Cmd(TIM8, ENABLE);
+							TIM_SetCounter(TIM8, 0x00);
+			};
 		};
 
 
@@ -1280,7 +1405,7 @@ void mTimersInit(void)
 
 	TIM_TimeBaseStructInit(&myTimer);
 	myTimer.TIM_Prescaler = 210;
-	myTimer.TIM_Period = 640;
+	myTimer.TIM_Period = 640;// Seq2 pulse duration
 	myTimer.TIM_ClockDivision = TIM_CKD_DIV1;
 	myTimer.TIM_CounterMode = TIM_CounterMode_Up;
 
@@ -1340,6 +1465,7 @@ void TIM3_IRQHandler()
 			&& (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1))
 	{
 
+
 	}
 	else if((gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z)
 			&& (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0))
@@ -1347,6 +1473,16 @@ void TIM3_IRQHandler()
 		gSequencerMode_1 = SEQUENCER_MODE_RUN;
 		gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
 		TIM3->CR1 &= ~TIM_CR1_CEN;
+		PULSE_LED_I_ALL_ON;
+					if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
+						PULSE_LED_I_1_ON;
+					};
+					if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
+						PULSE_LED_I_2_ON;
+					};
+
+					TIM_Cmd(TIM14, ENABLE);
+					TIM_SetCounter(TIM14, 0x00);
 	}
 };
 
@@ -1376,6 +1512,17 @@ void TIM7_IRQHandler()
 		gSequencerMode_2 = SEQUENCER_MODE_RUN;
 		gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
 		TIM7->CR1 &= ~TIM_CR1_CEN;
+		PULSE_LED_II_ALL_ON;
+
+						if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
+							PULSE_LED_II_1_ON;
+						};
+						if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
+							PULSE_LED_II_2_ON;
+						};
+
+						TIM_Cmd(TIM8, ENABLE);
+						TIM_SetCounter(TIM8, 0x00);
 	}
 };
 
@@ -2267,8 +2414,6 @@ unsigned char keyb_proc(uButtons * key)
 
 
 	/* Stage address ADVANCE 1 KEY*/
-
-
 	if (!key->b.StageAddress1ContiniousSelect) {
 		if (gSequencerMode_1 != SEQUENCER_MODE_WAIT) {
 			gPrevSequencerMode_1 = gSequencerMode_1;
@@ -2303,30 +2448,24 @@ unsigned char keyb_proc(uButtons * key)
 
 	if (!key->b.StageAddress1Advance) {
 
-
-
 		advanced_counter_1++;
 		//if(advanced_counter_1 == 10)
 		{
 		if(gSequencerMode_1 != SEQUENCER_MODE_WAIT)
 		{
-		if(gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)
+		if(gSequencerMode_1 == SEQUENCER_MODE_RUN)
 		{
 			PreviousStep = GetStepVoltage(0, gSequenceStepNumber_1);
 			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
 			gStepWidth_1 = 0;
 		}
-
-
 		else{
 			if(gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z )(gPrevSequencerMode_1 = gSequencerMode_1);
 
 			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
 		}
-		gSequencerMode_1 = SEQUENCER_MODE_ADVANCE;
+		gSequencerMode_1 = SEQUENCER_MODE_STOP;
 						PULSE_LED_I_ALL_ON;
-
-
 
 				if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
 					PULSE_LED_I_1_ON;
@@ -2335,45 +2474,30 @@ unsigned char keyb_proc(uButtons * key)
 					PULSE_LED_I_2_ON;
 				};
 
-
-
 				TIM_Cmd(TIM14, ENABLE);
 				TIM_SetCounter(TIM14, 0x00);
-
-
-
-
 	}	}
 	} else advanced_counter_1 = 0;
 
 		if (!key->b.StageAddress2Advance) {
 
 		advanced_counter_2++;
-		//if(advanced_counter_2 == 10)
+//		if(advanced_counter_2 == 10)
 		{
 		if(gSequencerMode_2 != SEQUENCER_MODE_WAIT)
 				{
-		if(gSequencerMode_2 == SEQUENCER_MODE_ADVANCE)
+		if(gSequencerMode_2 == SEQUENCER_MODE_RUN)
 		{
 			PreviousStep_2 = GetStepVoltage(1, gSequenceStepNumber_2);
 			gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
 			gStepWidth_2 = 0;
-
-
 		}
-
-
-
-
 		else
 		{
 			if(gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z )(gPrevSequencerMode_2 = gSequencerMode_2);
 			gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
-
-
-
 		}
-		gSequencerMode_2 = SEQUENCER_MODE_ADVANCE;
+		gSequencerMode_2 = SEQUENCER_MODE_STOP;
 				PULSE_LED_II_ALL_ON;
 
 				if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
@@ -2570,11 +2694,10 @@ void UpdateStepSection(void)
 
 
 void Calibration(void)
-{
-	unsigned long i;
+	unsigned int i=0;
 	uButtons myButtons;
 	uLeds mLeds;
-	volatile unsigned long long int key_state;
+	myButtons.value = GetButton();
 
 	mLeds.value[0]  	= 0xFF;
 	mLeds.value[1]  	= 0xFF;
@@ -2617,23 +2740,25 @@ void Calibration(void)
 		else i = 0;
 
 		LEDS_modes_SendStruct(&mLeds);
-
 		myButtons.value = GetButton();
 	}
 	//Measure external inputs
-	for(i = 0; i < 8; i++)
+
+	for(i = 0; i < 8 ; i++)
 	{
 		CalConstants[i] = AddData[i];
 		if(CalConstants[i] < 100) CalConstants[i] = 4095;
-	}
+	};
 	ADCPause();
 	//Store calibration consstants
 	CAT25512_write_block(100*sizeof(Steps), (unsigned char *) CalConstants, sizeof(CalConstants));
 	mADC_init();
+	return; //Get outta here properly when calibration is completed. Fixes problem where CalConstant[8] wasn't being calculate properly  SB 4/30/20
+
 	while(!myButtons.b.StageAddress2Advance)
 	{
-				i++;
-		if(i < 2000)
+		i++;
+		if(i < 1000)
 		{
 			mLeds.b.Seq1Run = 1;
 			mLeds.b.Seq1Wait = 1;
@@ -2642,7 +2767,7 @@ void Calibration(void)
 			mLeds.b.Seq2Wait = 1;
 			mLeds.b.Seq2Stop = 0;
 		}
-		else if(i < 4000)
+		else if(i < 2000)
 		{
 			mLeds.b.Seq1Run = 0;
 			mLeds.b.Seq1Wait = 1;
@@ -2651,7 +2776,7 @@ void Calibration(void)
 			mLeds.b.Seq2Wait = 1;
 			mLeds.b.Seq2Stop = 1;
 		}
-		else if(i < 6000)
+		else if(i < 3000)
 		{
 			mLeds.b.Seq1Run = 1;
 			mLeds.b.Seq1Wait = 0;
@@ -2664,22 +2789,24 @@ void Calibration(void)
 		LEDS_modes_SendStruct(&mLeds);
 		myButtons.value = GetButton();
 	}
+
 }
 
 	RCC_ClocksTypeDef RCC_Clocks;
 
 int main(void)
-{
+ {
 	uButtons myButtons;
 	uLeds mLeds;
 	unsigned char _cnt;
 	volatile unsigned long long int key_state, prev_key_state;
 
-
 	unsigned char KeyThreshHoldCnt = 0, max_step;
 	uint16_t  next_step_tres = 0, prev_step_tres = 0, temp;
 	int i, j;
 	long acc;
+
+
 
 	/* Reset update states */
 	DisplayUpdateFlags.value = 0x00;
@@ -2750,8 +2877,6 @@ int main(void)
 	gSequencerMode_1 = SEQUENCER_MODE_STOP;
 	gSequencerMode_2 = SEQUENCER_MODE_STOP;
 
-
-
 //Scan initial state
 	key_state = GetButton();
 	myButtons.value = key_state;
@@ -2772,7 +2897,7 @@ int main(void)
 	}
 
 	while(1) {
-		gDipConfig = GetDipConfig();
+		//gDipConfig = GetDipConfig();
 		//Set offset and divider which depend on dip switch state
 		if(gDipConfig.b.V_OUT_1V == 1)
 		{
@@ -2783,8 +2908,8 @@ int main(void)
 		{
 			if(gDipConfig.b.V_OUT_1V2 == 1)
 			{
-				offset = (4095.0/8.333);
-				divider = 8.333;
+				offset = (4095.0/8.29);
+				divider = 8.29;
 			}
 			else
 			{
