@@ -23,6 +23,7 @@ each peripheral and the pins to which it can be mapped.
 | 21  | PA5  | DAC2 OUT   | Analog voltage out AFG2      | |
 | 24  | PC4  | GPIOC      | HC595 SHIFT Mode LEDs        | |
 | 25  | PC5  | GPIOC      | HC595 DATA Mode LEDs         | |
+| 26  | PB0  | GPIOB EXTI | AFG1 Stop banana             | |
 | 27  | PB1  | GPIOB EXTI | AFG2 Stop banana             | |
 | 33  | PB12 | SPI2       | MAX5135 DAC NSS              | Is this used ??? |
 | 34  | PB13 | SPI2       | MAX5135 DAC SCK              | ??? |
