@@ -2713,8 +2713,14 @@ void UpdateModeSection(void)
   mLeds.b.Voltage4     	= ~mStep->b.Voltage4;
   mLeds.b.Voltage6     	= ~mStep->b.Voltage6;
   mLeds.b.Voltage8     	= ~mStep->b.Voltage8;
+  if (SWAPPED_PULSES) {
   mLeds.b.Pulse1       	= ~mStep->b.OutputPulse2; //hack for Gate1 Gate2 leds
   mLeds.b.Pulse2       	= ~mStep->b.OutputPulse1;
+  }
+  else {
+  mLeds.b.Pulse1       	= ~mStep->b.OutputPulse1;
+  mLeds.b.Pulse2       	= ~mStep->b.OutputPulse2;
+  }
   mLeds.b.CycleFirst   	= ~mStep->b.CycleFirst;
   mLeds.b.CycleLast    	= ~mStep->b.CycleLast;
   mLeds.b.VoltageSource = ~mStep->b.VoltageSource;

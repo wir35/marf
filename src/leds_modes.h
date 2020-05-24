@@ -8,6 +8,8 @@
 #ifndef LEDS_MODES_H_
 #define LEDS_MODES_H_
 
+#define SWAPPED_PULSES 1
+
 //Union which allows to control each led on panel separately
 typedef union
 {
