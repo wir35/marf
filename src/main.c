@@ -48,7 +48,7 @@ volatile unsigned char 	ADC_POT_sel_cnt = 0;
 
 #define PulseStatus printf("Line: %i \n Step#; %i \n Mode: %d \n  PrevMode: %d \n Pulse1: %i \n \n", __LINE__, gSequenceStepNumber_1,gSequencerMode_1,gPrevSequencerMode_1, (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) );
 
-	
+
 //Union with flags which allows to update different parts of panel
 typedef union
 {
@@ -164,6 +164,7 @@ volatile uint16_t average_array[2][32][NUMS];
 volatile uint16_t average_index[2][32];
 volatile long long acc;
 volatile uint16_t steps_lp[2][32];
+volatile uint16_t tsteps_lp[2][32];
 
 
 unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum);
@@ -207,7 +208,7 @@ void ADC_IRQHandler()
 	//ADC1 conversation complete
 	if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
 
-		//Calculate average of 10 measurements for voltage sliders
+		// Calculate voltage slider values 
 		if (  (ADC_POT_sel_cnt<=15)) {
 			if ( (Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
 			  // Add Steven's range-check in cute bitwise form
@@ -286,6 +287,7 @@ void ADC_IRQHandler()
 				NeedInc = 1;
 			};
 		}
+		// Calculate time slider values
 		// Time sliders for steps 1-16 are pots 24--39 inclusive.
 		if ((ADC_POT_sel_cnt>=24) && (ADC_POT_sel_cnt<=39)) {
 
@@ -297,7 +299,9 @@ void ADC_IRQHandler()
 		  }
 		  else
 		    {
-		      Steps[0][ADC_POT_sel_cnt-24].b.TLevel += ((unsigned int) ADC1->DR - Steps[0][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ;
+		      // Two-pole filter
+		      tsteps_lp[0][ADC_POT_sel_cnt-24] += ((uint16_t) ADC1->DR - tsteps_lp[0][ADC_POT_sel_cnt-24]) >> 4;
+		      Steps[0][ADC_POT_sel_cnt-24].b.TLevel += (tsteps_lp[0][ADC_POT_sel_cnt-24] - Steps[0][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ;
 			// Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
 		    }
 		  if (Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting?
@@ -308,8 +312,10 @@ void ADC_IRQHandler()
 		  }
 		  else
 		    {
-		      Steps[1][ADC_POT_sel_cnt-24].b.TLevel += ((unsigned int) ADC1->DR - Steps[1][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ;
-			//	Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
+		      // Two-pole filter
+		      tsteps_lp[1][ADC_POT_sel_cnt-24] += ((uint16_t) ADC1->DR - tsteps_lp[1][ADC_POT_sel_cnt-24]) >> 4;
+		      Steps[1][ADC_POT_sel_cnt-24].b.TLevel += (tsteps_lp[1][ADC_POT_sel_cnt-24] - Steps[1][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ;
+		      //	Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
 		    }
 		  NeedInc = 1;
 		};
