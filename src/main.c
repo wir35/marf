@@ -1161,7 +1161,7 @@ void TIM4_IRQHandler()
 				//printf("RUN \n");
 				;
 				PULSE_LED_I_ALL_ON;
-				PulseStatus
+				PulseStatus; 
 				if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
 					PULSE_LED_I_1_ON;
 				};
@@ -1176,7 +1176,7 @@ void TIM4_IRQHandler()
 		if (gSequencerMode_1 == SEQUENCER_MODE_STOP) {
 
 			//gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-				printf("STOP \n");
+		  //printf("STOP \n");
 				if (gPrevSequencerMode_1 == gSequencerMode_2)
 					{
 						PULSE_LED_I_ALL_ON;
@@ -1368,7 +1368,7 @@ void TIM5_IRQHandler()
 			if (gSequencerMode_2 == SEQUENCER_MODE_STOP) {
 
 						//gSequenceStepNumber_2 = GetNextStep(0, gSequenceStepNumber_1);
-							printf("STOP \n");
+			  // printf("STOP \n");
 							if (gPrevSequencerMode_2 == gSequencerMode_2)
 								{
 									PULSE_LED_II_ALL_ON;
