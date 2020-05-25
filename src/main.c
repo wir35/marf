@@ -71,7 +71,9 @@ volatile uStep Steps[2][32];				//Main steps array data
 #define SEQUENCER_DATA_SIZE	(6*2*32)
 //volatile unsigned int AddData[8];		//Additional analog data
 volatile uint16_t AddData[8];		//Additional analog data
-volatile unsigned int CalConstants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};		//Additional analog data
+volatile unsigned int CalConstants[9] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0};		//Additional analog data
+// GAM 25/5/2020 added one entry here to record whether or not the pulses should be swapped
+unsigned int swapped_pulses = 0; 
 
 //Display modes
 #define DISPLAY_MODE_VIEW_1				0
@@ -2724,13 +2726,14 @@ void UpdateModeSection(void)
   mLeds.b.Voltage4     	= ~mStep->b.Voltage4;
   mLeds.b.Voltage6     	= ~mStep->b.Voltage6;
   mLeds.b.Voltage8     	= ~mStep->b.Voltage8;
-  #ifdef SWAPPED_PULSES
+  if (swapped_pulses) {
   mLeds.b.Pulse1       	= ~mStep->b.OutputPulse2; //hack for Gate1 Gate2 leds
   mLeds.b.Pulse2       	= ~mStep->b.OutputPulse1;
-  #else
+  }
+  else {
   mLeds.b.Pulse1       	= ~mStep->b.OutputPulse1;
   mLeds.b.Pulse2       	= ~mStep->b.OutputPulse2;
-  #endif
+  }
   mLeds.b.CycleFirst   	= ~mStep->b.CycleFirst;
   mLeds.b.CycleLast    	= ~mStep->b.CycleLast;
   mLeds.b.VoltageSource = ~mStep->b.VoltageSource;
@@ -2890,6 +2893,17 @@ void Calibration(void)
 		//printf ("\n CalConstants[%d] %d \n", i,CalConstants[i]);
 
 	};
+	//
+	if ( !myButtons.b.Pulse1On )
+	  {
+	    CalConstants[8]=1;
+	    swapped_pulses =1; 
+	  }
+	else
+	  {
+	    CalConstants[8]=0;
+	    swapped_pulses =0; 
+	  }
 	ADCPause();
 	//printf("ADCPause %d \n ",__LINE__);
 	//Store calibration consstants
@@ -3038,6 +3052,9 @@ int main(void)
 		{
 			if(CalConstants[i] < 100) CalConstants[i] = 4095;
 		}
+		// CalConstants[8] tells whether to swap the pulses
+		if (CalConstants[8] > 1) CalConstants[8] = 0;
+		swapped_pulses = CalConstants[8]; 
 	}
 
 	while(1) {		
