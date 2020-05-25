@@ -69,7 +69,8 @@ volatile uDisplayUpdateFlag DisplayUpdateFlags;
 
 volatile uStep Steps[2][32];				//Main steps array data
 #define SEQUENCER_DATA_SIZE	(6*2*32)
-volatile unsigned int AddData[8];		//Additional analog data
+//volatile unsigned int AddData[8];		//Additional analog data
+volatile uint16_t AddData[8];		//Additional analog data
 volatile unsigned int CalConstants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};		//Additional analog data
 
 //Display modes
@@ -329,8 +330,12 @@ void ADC_IRQHandler()
 	//ADC2 used for external inputs conversion
 		if ( ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET ) {
 		if ((ADC_POT_sel_cnt>=16) && (ADC_POT_sel_cnt<=23)) {
- 			AddData[ADC_POT_sel_cnt-16] = (unsigned int)(ADC2->DR);
-			NeedInc = 1;
+		  //		  			AddData[ADC_POT_sel_cnt-16] = (unsigned int)(ADC2->DR);
+		  // One pole filter on the external inputs for now
+		  // NB this code only works when AddData is a uint16_t; unsigned int does not work properly
+		  // because of how the compiler handles arithmetic on unsigned values. 
+		   AddData[ADC_POT_sel_cnt-16] += ((uint16_t) (ADC2->DR) - AddData[ADC_POT_sel_cnt-16])>>4; 
+		   NeedInc = 1; 
 		};
 		ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
 
