@@ -72,6 +72,7 @@ volatile uStep Steps[2][32];				//Main steps array data
 //volatile unsigned int AddData[8];		//Additional analog data
 volatile uint16_t AddData[8];		//Additional analog data
 volatile unsigned int CalConstants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};		//Additional analog data
+volatile unsigned int swapped_pulses = 0; // do the pulse LEDs need to be swapped? 
 
 //Display modes
 #define DISPLAY_MODE_VIEW_1				0
@@ -2724,8 +2725,14 @@ void UpdateModeSection(void)
   mLeds.b.Voltage4     	= ~mStep->b.Voltage4;
   mLeds.b.Voltage6     	= ~mStep->b.Voltage6;
   mLeds.b.Voltage8     	= ~mStep->b.Voltage8;
+  if (swapped_pulses) {
+  mLeds.b.Pulse1       	= ~mStep->b.OutputPulse2; //hack for Gate1 Gate2 leds
+  mLeds.b.Pulse2       	= ~mStep->b.OutputPulse1;
+  }
+  else {
   mLeds.b.Pulse1       	= ~mStep->b.OutputPulse1;
   mLeds.b.Pulse2       	= ~mStep->b.OutputPulse2;
+  }
   mLeds.b.CycleFirst   	= ~mStep->b.CycleFirst;
   mLeds.b.CycleLast    	= ~mStep->b.CycleLast;
   mLeds.b.VoltageSource = ~mStep->b.VoltageSource;
@@ -2823,6 +2830,48 @@ void UpdateStepSection(void)
 	};
 };
 
+void PermutePulses(void)
+{
+  unsigned int i=0; 
+  uButtons myButtons;
+  uLeds mLeds;
+  mLeds.value[0]  	= 0xFF;
+  mLeds.value[1]  	= 0xFF;
+  mLeds.value[2]  	= 0xFF;
+  mLeds.value[3]  	= 0xFF;
+  DISPLAY_LED_I_OFF;
+  DISPLAY_LED_II_OFF;
+
+  myButtons.value = GetButton();
+  // Flash pulse 1 until one of the switches is activated
+  while (myButtons.b.Pulse1On && myButtons.b.Pulse2On) {
+    i++;
+    if (i<200) {
+        mLeds.b.Pulse1 = 1;
+    }
+    else if (i<400) {
+              mLeds.b.Pulse1 = 0;
+    }
+    else {
+      i = 0; 
+    }
+    LEDS_modes_SendStruct(&mLeds);
+    myButtons.value = GetButton();
+  }
+  if (!myButtons.b.Pulse1On) // user is happy with pulse 1 
+    {
+      swapped_pulses =0; 
+    }
+  else { // user is not happy with pulse 1 so swap
+    swapped_pulses = 1;
+  }
+  // Write selection to memory, reset LEDs and return
+  CAT25512_WriteByte(100*sizeof(Steps)+sizeof(CalConstants),swapped_pulses);
+  mLeds.b.Pulse1=0;
+  LEDS_modes_SendStruct(&mLeds);
+}
+
+
 
 void Calibration(void)
 {	//printf("%d \n ",__LINE__);
@@ -2885,9 +2934,10 @@ void Calibration(void)
 		//printf ("\n CalConstants[%d] %d \n", i,CalConstants[i]);
 
 	};
+	//
 	ADCPause();
 	//printf("ADCPause %d \n ",__LINE__);
-	//Store calibration consstants
+	//Store calibration constants
 	CAT25512_write_block(100*sizeof(Steps), (unsigned char *) CalConstants, sizeof(CalConstants));
 	mADC_init();
 	return; //Get outta here properly when calibration is completed. Fixes problem where CalConstant[8] wasn't being calculate properly  SB 4/30/20
@@ -3025,7 +3075,12 @@ int main(void)
 		//if advance switch is pressed start calibration
 		Calibration();
 	}
-	else
+	else if (!myButtons.b.Pulse1Off && !myButtons.b.Pulse2Off)
+	  // set up pulse LED permutation
+	  {
+	    PermutePulses(); 
+	  }
+		else
 	{
 		//if not restore calibration constants from memory
 		CAT25512_read_block(100*sizeof(Steps), (unsigned char *) CalConstants, sizeof(CalConstants));
@@ -3033,6 +3088,7 @@ int main(void)
 		{
 			if(CalConstants[i] < 100) CalConstants[i] = 4095;
 		}
+		swapped_pulses = CAT25512_ReadByte(100*sizeof(Steps)+sizeof(CalConstants));
 	}
 
 	while(1) {		
