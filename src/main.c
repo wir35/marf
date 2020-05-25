@@ -3134,13 +3134,15 @@ int main(void)
 			{
 				if(j == 0)
 				{
-					temp = (AddData[ADC_STAGEADDRESS_Ch_1]*4095/CalConstants[ADC_STAGEADDRESS_Ch_1]);
+				  //					temp = (AddData[ADC_STAGEADDRESS_Ch_1]*4095/CalConstants[ADC_STAGEADDRESS_Ch_1]);
+				  temp = (AddData[ADC_STAGEADDRESS_Ch_1]); 
 					if(temp > 4095) temp = 4095;
 					acc += temp;
 				}
 				else
 				{
-					temp = (AddData[ADC_STAGEADDRESS_Ch_2]*4095/CalConstants[ADC_STAGEADDRESS_Ch_2]);
+				  //					temp = (AddData[ADC_STAGEADDRESS_Ch_2]*4095/CalConstants[ADC_STAGEADDRESS_Ch_2]);
+				  temp = (AddData[ADC_STAGEADDRESS_Ch_2]); 
 					if(temp > 4095) temp = 4095;
 					acc += temp;
 				}
