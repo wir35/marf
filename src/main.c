@@ -168,6 +168,8 @@ volatile long long acc;
 volatile uint16_t steps_lp[2][32];
 volatile uint16_t tsteps_lp[2][32];
 
+volatile uint16_t step1; 
+
 
 unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum);
 
@@ -252,6 +254,7 @@ void ADC_IRQHandler()
 			  /* 	} */
 			  /* 	Steps[0][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
 			  //Steps[0][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel)/2;
+			  if (ADC_POT_sel_cnt==0) step1 = ADC1->DR;
 			  steps_lp[0][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[0][ADC_POT_sel_cnt]) >> 4;
 			  Steps[0][ADC_POT_sel_cnt].b.VLevel += (steps_lp[0][ADC_POT_sel_cnt] - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4;
 			  //			  Steps[0][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4;
@@ -352,7 +355,7 @@ void ADC_IRQHandler()
 			ADC_POT_sel_cnt = 0;
 		};
 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
-		delay_us(10); // don't know if there is time for this!
+		//		delay_us(10); // don't know if there is time for this!
 	  };
 	}
 	else
@@ -363,7 +366,7 @@ void ADC_IRQHandler()
 			ADC_POT_sel_cnt = 0;
 		};
 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
-		delay_us(10);
+		//delay_us(10);
 	  };
 	}
 };
@@ -415,7 +418,7 @@ void mADC_init(void)
 	  ADC_CommonInitTypeDef ADC_CommonInitStructure;
 
 	  ADC_CommonInitStructure.ADC_Mode = ADC_Mode_Independent;
-	  ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div4;
+	  ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div6;
 	  ADC_CommonInitStructure.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
 	  ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
 	  ADC_CommonInit(&ADC_CommonInitStructure);
