@@ -146,6 +146,30 @@ void ADC_POTS_selector_SendByte(unsigned char data)
 	ADC_POTS_SELECTOR_DATA_LOW;
 }
 
+void ADC_POTS_selector_SendHalfByte(unsigned char data)
+{
+  	unsigned char dat, cnt;
+	
+	dat = data;
+	for(cnt=0; cnt<4; cnt++)
+	{
+		if ((dat & 0x8) > 0) {
+			ADC_POTS_SELECTOR_DATA_HIGH;
+		} else {
+			ADC_POTS_SELECTOR_DATA_LOW;
+		}
+
+		ADC_POTS_SELECTOR_SHIFT_LOW;
+ 
+		ADC_POTS_SELECTOR_SHIFT_HIGH;
+   
+		dat = dat << 1;
+	}
+	
+	ADC_POTS_SELECTOR_DATA_LOW;
+
+}
+
 //Send 5 bytes to ADC channels multiplexers
 void ADC_POTS_selector_SendDWord(unsigned long long int data)
 {	
@@ -165,4 +189,33 @@ void ADC_POTS_selector_SendDWord(unsigned long long int data)
 void ADC_POTS_selector_Ch(unsigned char Ch)
 {
 	ADC_POTS_selector_SendDWord((unsigned long long int) ChSelData[Ch]);
+}
+
+//Select next ADC channel and tell which it is 
+unsigned char ADC_inc(unsigned char pot)
+{
+  unsigned char _pot, channel;
+  channel = pot & 0x7; // last three bits of the pot number tell which channel of the mux is live
+  if (pot >= 8 && pot < 16) {// we're on the final mux
+    channel = (channel + 1) & 0x7;    // increment the channel and wrap
+    ADC_POTS_selector_SendHalfByte(channel);
+    _pot = 24+channel;  // time slider 1-8 are pots 24 - 31. 
+  }
+  else if (pot >=16 && pot < 24) { // we're on the external mux, need to shift twice to get to the voltage slider
+    ADC_POTS_selector_SendByte(0xFF);
+    _pot = channel; // voltage sliders 1-8 are pots 0-7; 
+  }
+  else {
+    ADC_POTS_selector_SendHalfByte(0xF); // just shift to next mux
+    if (pot >= 32 && pot < 40) // final time sliders, external voltages are next
+      {
+	_pot = pot - 16; 
+      }
+    else {
+      _pot = pot + 8; // otherwise shift just moves pot count along by 8
+    }
+  }
+  ADC_POTS_SELECTOR_STORAGE_LOW;
+  ADC_POTS_SELECTOR_STORAGE_HIGH;
+  return _pot; 
 }

@@ -363,15 +363,17 @@ void ADC_IRQHandler()
 	else
 	{
 	  if (NeedInc) {
-		ADC_POT_sel_cnt++;
-		if (ADC_POT_sel_cnt >= 40) {//40
-			ADC_POT_sel_cnt = 0;
-		};
-		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
+		/* ADC_POT_sel_cnt++; */
+		/* if (ADC_POT_sel_cnt >= 40) {//40 */
+		/* 	ADC_POT_sel_cnt = 0; */
+		/* }; */
+		/* ADC_POTS_selector_Ch(ADC_POT_sel_cnt); */
+	    ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt); // figure out next pot and switch the mux
 		delay_us(10);
 	  };
 	}
 };
+
 
 /*
 	Setting up acts Timer 2 as source for ADC start conversion
