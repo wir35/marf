@@ -194,6 +194,11 @@ void ADC_POTS_selector_Ch(unsigned char Ch)
 //Select next ADC channel and tell which it is 
 unsigned char ADC_inc(unsigned char pot)
 {
+  /* Muxes are addressed by three shift registers in series as follows: */
+  /*   1. time sliders aka pots 24-39 */
+  /*   2. (first half) external voltages aka pots 16-23 */
+  /*   2. (unused half a shift register) */
+  /*   3. voltage sliders  aka pots 0 - 15 */
   unsigned char _pot, channel;
   channel = pot & 0x7; // last three bits of the pot number tell which channel of the mux is live
   if (pot >= 8 && pot < 16) {// we're on the final mux
@@ -203,7 +208,7 @@ unsigned char ADC_inc(unsigned char pot)
   }
   else if (pot >=16 && pot < 24) { // we're on the external mux, need to shift twice to get to the voltage slider
     ADC_POTS_selector_SendByte(0xFF);
-    _pot = channel; // voltage sliders 1-8 are pots 0-7; 
+    _pot = channel; // voltage sliders are pots 0-7
   }
   else {
     ADC_POTS_selector_SendHalfByte(0xF); // just shift to next mux
@@ -215,7 +220,51 @@ unsigned char ADC_inc(unsigned char pot)
       _pot = pot + 8; // otherwise shift just moves pot count along by 8
     }
   }
+  // activate the shift register with the new data
   ADC_POTS_SELECTOR_STORAGE_LOW;
   ADC_POTS_SELECTOR_STORAGE_HIGH;
+  // tell the main interrupt which pot we're on now
   return _pot; 
 }
+
+unsigned char ADC_inc_expanded(unsigned char pot)
+{
+  /* Hypothesis: Muxes are addressed by five shift registers in series as follows: */
+  /*   1. time sliders aka pots 24-39 */
+  /*   2. (first half) external voltages aka pots 16-23 */
+  /*   2. (unused half a shift register) */
+  /*   3. voltage sliders  aka pots 0 - 15 */
+  /*   4. expander voltage sliders aka pots 40 - 55 */
+  /*   5. expander time sliders aka pots 56 - 71 */
+  unsigned char _pot, channel;
+  channel = pot & 0x7; // last three bits of the pot number tell which channel of the mux is live
+  if (pot >= 64 && pot < 72) {// we're on the final mux
+    channel = (channel + 1) & 0x7;    // increment the channel and wrap
+    ADC_POTS_selector_SendHalfByte(channel);
+    _pot = 24+channel;  // time slider 1-8 are pots 24 - 31. 
+  }
+  else if (pot >=16 && pot < 24) { // we're on the external mux, need to shift twice to get to the voltage slider
+    ADC_POTS_selector_SendByte(0xFF);
+    _pot = channel; // voltage sliders are pots 0-7
+  }
+  else {
+    ADC_POTS_selector_SendHalfByte(0xF); // just shift to next mux
+    if (pot >= 32 && pot < 40) // final time sliders, external voltages are next
+      {
+	_pot = pot - 16; 
+      }
+    else if (pot >=8 && pot < 16) {
+      _pot = pot + 32; 
+    }
+    else 
+      {
+      _pot = pot + 8; // otherwise shift just moves pot count along by 8
+      }
+  }
+  // activate the shift register with the new data
+  ADC_POTS_SELECTOR_STORAGE_LOW;
+  ADC_POTS_SELECTOR_STORAGE_HIGH;
+  // tell the main interrupt which pot we're on now
+  return _pot; 
+}
+

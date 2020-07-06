@@ -352,11 +352,12 @@ void ADC_IRQHandler()
 	if(Is_Expander_Present())
 	{
 	  if (NeedInc) {
-		ADC_POT_sel_cnt++;
-		if (ADC_POT_sel_cnt >= 72) {//40
-			ADC_POT_sel_cnt = 0;
-		};
-		ADC_POTS_selector_Ch(ADC_POT_sel_cnt);
+		/* ADC_POT_sel_cnt++; */
+		/* if (ADC_POT_sel_cnt >= 72) {//40 */
+		/* 	ADC_POT_sel_cnt = 0; */
+		/* }; */
+		/* ADC_POTS_selector_Ch(ADC_POT_sel_cnt); */
+	    ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt); // figure out next pot and switch the mux
 		delay_us(10); // don't know if there is time for this!
 	  };
 	}
