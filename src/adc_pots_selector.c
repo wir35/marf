@@ -253,7 +253,7 @@ unsigned char ADC_inc_expanded(unsigned char pot)
       {
 	_pot = pot - 16; 
       }
-    else if (pot >=8 && pot < 16) {
+    else if (pot >=8 && pot < 16) { // from mux 3 to mux 4
       _pot = pot + 32; 
     }
     else 
