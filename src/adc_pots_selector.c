@@ -135,9 +135,9 @@ void ADC_POTS_selector_SendByte(unsigned char data)
 		} else {
 			ADC_POTS_SELECTOR_DATA_LOW;
 		}
-
+		delay_ns(100); // data setup to serial clock time
 		ADC_POTS_SELECTOR_SHIFT_LOW;
- 
+		delay_ns(80); // serial clock pulse should be 80ns
 		ADC_POTS_SELECTOR_SHIFT_HIGH;
    
 		dat = dat << 1;
@@ -158,9 +158,9 @@ void ADC_POTS_selector_SendHalfByte(unsigned char data)
 		} else {
 			ADC_POTS_SELECTOR_DATA_LOW;
 		}
-
+		delay_ns(100); // data setup to serial clock time
 		ADC_POTS_SELECTOR_SHIFT_LOW;
- 
+		delay_ns(80); // serial clock pulse should be 80ns
 		ADC_POTS_SELECTOR_SHIFT_HIGH;
    
 		dat = dat << 1;
@@ -181,7 +181,7 @@ void ADC_POTS_selector_SendDWord(unsigned long long int data)
 
 	
 	ADC_POTS_SELECTOR_STORAGE_LOW;
-	
+	delay_ns(80); 
 	ADC_POTS_SELECTOR_STORAGE_HIGH;
 }
 
@@ -222,6 +222,7 @@ unsigned char ADC_inc(unsigned char pot)
   }
   // activate the shift register with the new data
   ADC_POTS_SELECTOR_STORAGE_LOW;
+  delay_ns(80); 
   ADC_POTS_SELECTOR_STORAGE_HIGH;
   // tell the main interrupt which pot we're on now
   return _pot; 
@@ -263,6 +264,7 @@ unsigned char ADC_inc_expanded(unsigned char pot)
   }
   // activate the shift register with the new data
   ADC_POTS_SELECTOR_STORAGE_LOW;
+  delay_ns(80); 
   ADC_POTS_SELECTOR_STORAGE_HIGH;
   // tell the main interrupt which pot we're on now
   return _pot; 
