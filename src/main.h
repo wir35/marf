@@ -6,5 +6,5 @@ void ADCPause(void);
 
 void delay_ms(unsigned int ms);
 void delay_us(unsigned int us);
-void delay_nss(unsigned int ns);
+void delay_ns(unsigned int ns);
 
