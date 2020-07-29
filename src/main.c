@@ -2520,7 +2520,7 @@ unsigned char keyb_proc(uButtons * key)
 	if (!key->b.StageAddress1Advance) {
 		
 		advanced_counter_1++;
-		//if(advanced_counter_1 == 10)
+		//		if(advanced_counter_1 == 10)
 		{
 		if(gSequencerMode_1 != SEQUENCER_MODE_WAIT)
 		{
@@ -2547,7 +2547,7 @@ unsigned char keyb_proc(uButtons * key)
 				
 				TIM_Cmd(TIM14, ENABLE);
 				TIM_SetCounter(TIM14, 0x00);
-	}	}
+		}	}
 	} else advanced_counter_1 = 0;
 	
 		if (!key->b.StageAddress2Advance) {
@@ -2947,12 +2947,10 @@ int main(void)
 	Steps[0][0].b.FullRange = 1;
 	Steps[1][0] = Steps[0][0];
 	
-	for(_cnt=1;_cnt<=15;_cnt++) 
+	for(_cnt=1;_cnt<=31;_cnt++) 
 	{
 		Steps[0][_cnt] = Steps[0][0];		
 		Steps[1][_cnt] = Steps[0][0];
-		Steps[0][_cnt+16] = Steps[0][0];		
-		Steps[1][_cnt+16] = Steps[0][0];
 	};
 	
 	//Debug stuff
@@ -3055,9 +3053,7 @@ int main(void)
 
 		/* keys proceed */
 		if (KeyThreshHoldCnt == 0) {
-		  			  tick = 0; 
 			key_state = GetButton();
-						  tick = 1; 
 
 		};		
 		
@@ -3068,7 +3064,9 @@ int main(void)
 						(gDisplayMode != DISPLAY_MODE_LOAD_1) && (gDisplayMode != DISPLAY_MODE_LOAD_2) ) 
 			{
 				if (key_state != prev_key_state || myButtons.b.StepRight == 0 || myButtons.b.StepLeft == 0) {
+				  tick = 0; 
 						keyb_proc(&myButtons);
+						tick = 1; 
 						prev_key_state = key_state;
 				};
 			}
