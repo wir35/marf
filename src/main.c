@@ -623,7 +623,8 @@ void EXTI9_5_IRQHandler()
 //printf("StartPulse \n");
 
 	if (EXTI->PR & (1<<8)) {	 
-		gPrevSequencerMode_1 = gSequencerMode_1;
+	  //		gPrevSequencerMode_1 = gSequencerMode_1;
+	  // This line seems to be a bug. 
 		PulseStatus;
 
 
