@@ -1,7 +1,7 @@
 #ifndef ADC_POTS_SELECTOR_H_
 #define ADC_POTS_SELECTOR_H_
 
-#define DELAY_CLOCK() ({ for (uint32_t d = 10; d != 0; d--) {} })
+#define DELAY_CLOCK() ({ for (uint32_t d = 10; d != 0; d--) {asm("nop");} })
 
 void ADC_POTS_selector_init(void);
 void ADC_POTS_selector_SendByte(unsigned char data);
