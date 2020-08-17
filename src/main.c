@@ -48,6 +48,7 @@ volatile unsigned char 	ADC_POT_sel_cnt = 0;
 
 #define PulseStatus printf("Line: %i \n Step#; %i \n Mode: %d \n  PrevMode: %d \n Pulse1: %i \n \n", __LINE__, gSequenceStepNumber_1,gSequencerMode_1,gPrevSequencerMode_1, (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) );
 
+#define scale(in) (in<121)?0:(in>3975)?4095:(in*17/16)-128;
 	
 //Union with flags which allows to update different parts of panel
 typedef union
@@ -168,8 +169,16 @@ volatile long long acc;
 volatile uint16_t steps_lp[2][32];
 volatile uint16_t tsteps_lp[2][32];
 
+volatile uint16_t voltages_lp[32];
+volatile uint16_t times_lp[32];
+
+volatile uint16_t adcreading; 
+
 volatile uint16_t step1; 
 
+#define POT_TYPE_VOLTAGE 100
+#define POT_TYPE_TIME 101
+#define POT_TYPE_OTHER 102
 
 unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum);
 	
@@ -191,188 +200,277 @@ uint16_t tick;
 void ADC_IRQHandler()
 {
   unsigned char NeedInc = 0; //, i; // i not needed if not using boxcar averaging scheme
-	// Seems like a bad idea to switch the MUX in the interrupt that reads the ADCs.
-	// Do it at at the end now GAM 05/04/2020
-	//If expander is connected we should scan its sliders
+  unsigned char pottype;
+  unsigned char stage;
+
+  // what stage are we reading?
+  if (ADC_POT_sel_cnt < 16) {
+    pottype = POT_TYPE_VOLTAGE;
+    stage = ADC_POT_sel_cnt; 
+  }
+  else if (ADC_POT_sel_cnt < 24) {
+    pottype = POT_TYPE_OTHER;
+    stage = ADC_POT_sel_cnt-16; 
+  }
+  else if (ADC_POT_sel_cnt < 40) {
+    pottype = POT_TYPE_TIME;
+    stage=ADC_POT_sel_cnt - 24; 
+  }
+  else if (ADC_POT_sel_cnt < 56) {
+    pottype = POT_TYPE_VOLTAGE;
+    stage = ADC_POT_sel_cnt - 24; 
+  }
+  else {
+    pottype=POT_TYPE_TIME;
+    stage = ADC_POT_sel_cnt - 40; 
+  }
+
+  // do we have an ADC value? if so fetch it
+  if (pottype == POT_TYPE_OTHER) {  // external voltages, time multiplier or stage select pot
+    	if ( ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET) {
+	  adcreading = (uint16_t) ADC2->DR & 0xfff;
+	  NeedInc = 1;
+	}
+  }
+  else { // sliders
+	if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+	  adcreading = (uint16_t) ADC1->DR & 0xfff;
+	  adcreading =scale(adcreading); // trim and scale slider readings
+	  NeedInc = 1;
+	}
+  }
+
+  // process the ADC reading
+  if (NeedInc) {
+    switch (pottype) {
+    case POT_TYPE_VOLTAGE:
+      voltages_lp[stage] += (adcreading - voltages_lp[stage])>>4;
+      for (int j=0; j<2; j++) {
+	if (Steps[j][stage].b.WaitVoltageSlider) { // stuck on a preset; shall we unstick?
+	  if (adcreading>>4 == Steps[j][stage].b.VLevel >>4) {
+	    Steps[j][stage].b.WaitVoltageSlider=0; 
+	  }
+	}
+	else { // store the filtered value 
+	  Steps[j][stage].b.VLevel += (voltages_lp[stage] - Steps[j][stage].b.VLevel) >> 4;
+	}
+      }
+      break;
+    case POT_TYPE_TIME:
+      times_lp[stage] += (adcreading - times_lp[stage])>>4;
+      for (int j=0; j<2; j++) {
+	if (Steps[j][stage].b.WaitTimeSlider) { // stuck on a preset; shall we unstick?
+	  if (adcreading>>4 == Steps[j][stage].b.TLevel >>4) {
+	    Steps[j][stage].b.WaitTimeSlider=0; 
+	  }
+	}
+	else { // store the filtered value 
+	  Steps[j][stage].b.TLevel += (times_lp[stage] - Steps[j][stage].b.TLevel) >> 4;
+	}
+      }
+      break;
+    case POT_TYPE_OTHER:
+      AddData[stage] += (adcreading - AddData[stage])>>4;
+      break; 
+    }
+
+    ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
+    ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
+
+    if(Is_Expander_Present()) {
+      ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt); // figure out next pot and switch the mux
+    }
+    else {
+      ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt); // figure out next pot and switch the mux
+    }
+  }
+  delay_us(10);
+  
+	/* // Seems like a bad idea to switch the MUX in the interrupt that reads the ADCs. */
+	/* // Do it at at the end now GAM 05/04/2020 */
+	/* //If expander is connected we should scan its sliders */
+	/* /\* if(Is_Expander_Present()) *\/ */
+	/* /\* { *\/ */
+	/* /\* 	if (ADC_POT_sel_cnt >= 71) { *\/ */
+	/* /\* 		ADC_POTS_selector_Ch(0); *\/ */
+	/* /\* 	} else { *\/ */
+	/* /\* 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1); *\/ */
+	/* /\* 	}; *\/ */
+	/* /\* } *\/ */
+	/* /\* else *\/ */
+	/* /\* { *\/ */
+	/* /\* 	if (ADC_POT_sel_cnt >= 39) { *\/ */
+	/* /\* 		ADC_POTS_selector_Ch(0); *\/ */
+	/* /\* 	} else { *\/ */
+	/* /\* 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1); *\/ */
+	/* /\* 	}; *\/ */
+	/* /\* } *\/ */
+
+
+	/* //ADC1 conversation complete */
+	/* if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) { */
+
+	/* 	// Calculate voltage slider values  */
+	/* 	if (  (ADC_POT_sel_cnt<=15)) { */
+	/* 		if ( (Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) { */
+	/* 		  // Add Steven's range-check in cute bitwise form */
+	/* 		  if ((unsigned int) (ADC1->DR) >> 4 == (unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel >>4 ) { */
+	/* 					Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0; */
+	/* 				}; */
+	/* 		} else { */
+	/* 			/\* average_array[1][ADC_POT_sel_cnt][average_index[1][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR); *\/ */
+
+	/* 			/\* average_index[1][ADC_POT_sel_cnt]++; *\/ */
+	/* 			/\* if(average_index[1][ADC_POT_sel_cnt] == NUMS) average_index[1][ADC_POT_sel_cnt] = 0; *\/ */
+
+	/* 			/\* acc = 0; *\/ */
+	/* 			/\* for(i = 0; i < NUMS; i++) *\/ */
+	/* 			/\* { *\/ */
+	/* 			/\* 	acc += average_array[1][ADC_POT_sel_cnt][i]; *\/ */
+	/* 			/\* } *\/ */
+	/* 			/\* Steps[1][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; *\/ */
+	/* 		  //				Steps[1][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4; */
+	/* 		  steps_lp[1][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[1][ADC_POT_sel_cnt]) >> 4; */
+	/* 		  Steps[1][ADC_POT_sel_cnt].b.VLevel += (steps_lp[1][ADC_POT_sel_cnt] - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4; */
+	/* 			//Steps[1][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel)/2; */
+	/* 		}; */
+	/* 		if ( (Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) { */
+	/* 		  // Check if voltage slider value is close to saved value and if so unstick */
+  	/* 		  if ((unsigned int) (ADC1->DR) >> 4 == (unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel >>4 ) { */
+	/* 					Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0; */
+	/* 		  }; */
+	/* 		} else { */
+	/* 		  /\* average_array[0][ADC_POT_sel_cnt][average_index[0][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR); *\/ */
+
+	/* 		  /\* 	average_index[0][ADC_POT_sel_cnt]++; *\/ */
+	/* 		  /\* 	if(average_index[0][ADC_POT_sel_cnt] == NUMS) average_index[0][ADC_POT_sel_cnt] = 0; *\/ */
+
+	/* 		  /\* 	acc = 0; *\/ */
+	/* 		  /\* 	for(i = 0; i < NUMS; i++) *\/ */
+	/* 		  /\* 	{ *\/ */
+	/* 		  /\* 		acc += average_array[0][ADC_POT_sel_cnt][i]; *\/ */
+	/* 		  /\* 	} *\/ */
+	/* 		  /\* 	Steps[0][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; *\/ */
+	/* 		  //Steps[0][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel)/2; */
+	/* 		  //			  if (ADC_POT_sel_cnt==0) step1 = ADC1->DR; */
+	/* 		  steps_lp[0][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[0][ADC_POT_sel_cnt]) >> 4; */
+	/* 		  Steps[0][ADC_POT_sel_cnt].b.VLevel += (steps_lp[0][ADC_POT_sel_cnt] - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4; */
+	/* 		  //			  Steps[0][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4; */
+	/* 		}; */
+	/* 		NeedInc = 1; */
+	/* 	}; */
+
+	/* 	//If expander is connected calculate additional voltagesH */
+	/* 	if(Is_Expander_Present()) */
+	/* 	{ */
+	/* 		if (  (ADC_POT_sel_cnt>=40 && (ADC_POT_sel_cnt<=55))) { */
+	/* 			if ( (Steps[1][ADC_POT_sel_cnt-24].b.WaitVoltageSlider == 1) ) { */
+	/* 					if ( (unsigned int) (ADC1->DR) == (unsigned int) Steps[1][ADC_POT_sel_cnt-24].b.VLevel ) { */
+	/* 						Steps[1][ADC_POT_sel_cnt-24].b.WaitVoltageSlider = 0; */
+	/* 					}; */
+	/* 			} else { */
+	/* 				Steps[1][ADC_POT_sel_cnt-24].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[1][ADC_POT_sel_cnt-24].b.VLevel)/2; */
+	/* 			}; */
+	/* 			if ( (Steps[0][ADC_POT_sel_cnt-24].b.WaitVoltageSlider == 1) ) { */
+	/* 			if ( (unsigned int) (ADC1->DR) == (unsigned int) Steps[0][ADC_POT_sel_cnt-24].b.VLevel ) { */
+	/* 						Steps[0][ADC_POT_sel_cnt-24].b.WaitVoltageSlider = 0; */
+	/* 			}; */
+	/* 			} else { */
+	/* 				Steps[0][ADC_POT_sel_cnt-24].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt-24].b.VLevel)/2; */
+	/* 			}; */
+	/* 			NeedInc = 1; */
+	/* 		} */
+
+	/* 		//Calculate average of 2 measurements for time sliders */
+	/* 			if ((ADC_POT_sel_cnt>=56) && (ADC_POT_sel_cnt<=71)) { */
+	/* 			  Steps[0][ADC_POT_sel_cnt-40].b.TLevel += ((unsigned int) ADC1->DR - Steps[0][ADC_POT_sel_cnt-40].b.TLevel) >> 4 ; */
+	/* 			  Steps[1][ADC_POT_sel_cnt-40].b.TLevel += ((unsigned int) ADC1->DR - Steps[1][ADC_POT_sel_cnt-40].b.TLevel) >> 4 ; */
+	/* 			    //    Steps[0][ADC_POT_sel_cnt-40].b.TLevel = (Steps0][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2; */
+	/* 			    //    Steps[1][ADC_POT_sel_cnt-40].b.TLevel = (Steps[1][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2; */
+	/* 			NeedInc = 1; */
+	/* 		}; */
+	/* 	} */
+	/* 	// Calculate time slider values */
+	/* 	// Time sliders for steps 1-16 are pots 24--39 inclusive. */
+	/* 	if ((ADC_POT_sel_cnt>=24) && (ADC_POT_sel_cnt<=39)) { */
+
+	/* 	  if (Steps[0][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting? */
+	/* 	    if ((unsigned int)Steps[0][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting */
+	/* 	      { */
+	/* 		Steps[0][ADC_POT_sel_cnt-24].b.WaitTimeSlider = 0; */
+	/* 	      } */
+	/* 	  } */
+	/* 	  else */
+	/* 	    { */
+	/* 	      // Two-pole filter */
+	/* 	      tsteps_lp[0][ADC_POT_sel_cnt-24] += ((uint16_t) ADC1->DR - tsteps_lp[0][ADC_POT_sel_cnt-24]) >> 4; */
+	/* 	      Steps[0][ADC_POT_sel_cnt-24].b.TLevel += (tsteps_lp[0][ADC_POT_sel_cnt-24] - Steps[0][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ; */
+	/* 		// Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2; */
+	/* 	    } */
+	/* 	  if (Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting? */
+	/* 	    if ((unsigned int)Steps[1][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting */
+	/* 	      { */
+	/* 		Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider = 0; */
+	/* 	      } */
+	/* 	  } */
+	/* 	  else */
+	/* 	    { */
+	/* 	      // Two-pole filter */
+	/* 	      tsteps_lp[1][ADC_POT_sel_cnt-24] += ((uint16_t) ADC1->DR - tsteps_lp[1][ADC_POT_sel_cnt-24]) >> 4; */
+	/* 	      Steps[1][ADC_POT_sel_cnt-24].b.TLevel += (tsteps_lp[1][ADC_POT_sel_cnt-24] - Steps[1][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ; */
+	/* 		//	Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2; */
+	/* 	    } */
+	/* 	  NeedInc = 1; */
+	/* 	}; */
+
+
+	/* 	//Clear end of conversion flag */
+	/* 	ADC_ClearFlag(ADC1, ADC_FLAG_EOC); */
+
+	/* } */
+
+	/* //ADC2 used for external inputs conversion */
+	/* 	if ( ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET ) { */
+	/* 	if ((ADC_POT_sel_cnt>=16) && (ADC_POT_sel_cnt<=23)) { */
+	/* 	  //		  			AddData[ADC_POT_sel_cnt-16] = (unsigned int)(ADC2->DR); */
+	/* 	  // One pole filter on the external inputs for now */
+	/* 	  // NB this code only works when AddData is a uint16_t; unsigned int does not work properly */
+	/* 	  // because of how the compiler handles arithmetic on unsigned values.  */
+	/* 	   AddData[ADC_POT_sel_cnt-16] += ((uint16_t) (ADC2->DR) - AddData[ADC_POT_sel_cnt-16])>>4;  */
+	/* 		NeedInc = 1; */
+	/* 		if (ADC_POT_sel_cnt == 22) step1 = ADC2->DR;  */
+	/* 	}; */
+	/* 	ADC_ClearFlag(ADC2, ADC_FLAG_EOC); */
+
+	/* }; */
+
+	/* 	//Calculate next channel to measure */
+	/* 	// and now also switch the MUX here. GAM 05/04/2020 */
 	/* if(Is_Expander_Present()) */
 	/* { */
-	/* 	if (ADC_POT_sel_cnt >= 71) { */
-	/* 		ADC_POTS_selector_Ch(0); */
-	/* 	} else { */
-	/* 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1); */
-	/* 	}; */
+	/*   if (NeedInc) { */
+	/* 	/\* ADC_POT_sel_cnt++; *\/ */
+	/* 	/\* if (ADC_POT_sel_cnt >= 72) {//40 *\/ */
+	/* 	/\* 	ADC_POT_sel_cnt = 0; *\/ */
+	/* 	/\* }; *\/ */
+	/* 	/\* ADC_POTS_selector_Ch(ADC_POT_sel_cnt); *\/ */
+	/*     ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt); // figure out next pot and switch the mux */
+	/* 	delay_us(10); // don't know if there is time for this! */
+	/*   }; */
 	/* } */
 	/* else */
 	/* { */
-	/* 	if (ADC_POT_sel_cnt >= 39) { */
-	/* 		ADC_POTS_selector_Ch(0); */
-	/* 	} else { */
-	/* 		ADC_POTS_selector_Ch(ADC_POT_sel_cnt+1); */
-	/* 	}; */
+	/*   if (NeedInc) { */
+	/* 	/\* ADC_POT_sel_cnt++; *\/ */
+	/* 	/\* if (ADC_POT_sel_cnt >= 40) {//40 *\/ */
+	/* 	/\* 	ADC_POT_sel_cnt = 0; *\/ */
+	/* 	/\* }; *\/ */
+	/* 	/\* ADC_POTS_selector_Ch(ADC_POT_sel_cnt); *\/ */
+	/*     ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt); // figure out next pot and switch the mux */
+	/* 	delay_us(10); */
+	/*   }; */
 	/* } */
 
-	//ADC1 conversation complete
-	if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
-
-		// Calculate voltage slider values 
-		if (  (ADC_POT_sel_cnt<=15)) {
-			if ( (Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
-			  // Add Steven's range-check in cute bitwise form
-			  if ((unsigned int) (ADC1->DR) >> 4 == (unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel >>4 ) {
-						Steps[1][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
-					};
-			} else {
-				/* average_array[1][ADC_POT_sel_cnt][average_index[1][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR); */
-
-				/* average_index[1][ADC_POT_sel_cnt]++; */
-				/* if(average_index[1][ADC_POT_sel_cnt] == NUMS) average_index[1][ADC_POT_sel_cnt] = 0; */
-
-				/* acc = 0; */
-				/* for(i = 0; i < NUMS; i++) */
-				/* { */
-				/* 	acc += average_array[1][ADC_POT_sel_cnt][i]; */
-				/* } */
-				/* Steps[1][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
-			  //				Steps[1][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4;
-			  steps_lp[1][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[1][ADC_POT_sel_cnt]) >> 4;
-			  Steps[1][ADC_POT_sel_cnt].b.VLevel += (steps_lp[1][ADC_POT_sel_cnt] - Steps[1][ADC_POT_sel_cnt].b.VLevel) >> 4;
-				//Steps[1][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[1][ADC_POT_sel_cnt].b.VLevel)/2;
-			};
-			if ( (Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider == 1) ) {
-			  // Check if voltage slider value is close to saved value and if so unstick
-  			  if ((unsigned int) (ADC1->DR) >> 4 == (unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel >>4 ) {
-						Steps[0][ADC_POT_sel_cnt].b.WaitVoltageSlider = 0;
-			  };
-			} else {
-			  /* average_array[0][ADC_POT_sel_cnt][average_index[0][ADC_POT_sel_cnt]] = (uint16_t) (ADC1->DR); */
-
-			  /* 	average_index[0][ADC_POT_sel_cnt]++; */
-			  /* 	if(average_index[0][ADC_POT_sel_cnt] == NUMS) average_index[0][ADC_POT_sel_cnt] = 0; */
-
-			  /* 	acc = 0; */
-			  /* 	for(i = 0; i < NUMS; i++) */
-			  /* 	{ */
-			  /* 		acc += average_array[0][ADC_POT_sel_cnt][i]; */
-			  /* 	} */
-			  /* 	Steps[0][ADC_POT_sel_cnt].b.VLevel = acc/NUMS; */
-			  //Steps[0][ADC_POT_sel_cnt].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt].b.VLevel)/2;
-			  if (ADC_POT_sel_cnt==0) step1 = ADC1->DR;
-			  steps_lp[0][ADC_POT_sel_cnt] += ((uint16_t) ADC1->DR - steps_lp[0][ADC_POT_sel_cnt]) >> 4;
-			  Steps[0][ADC_POT_sel_cnt].b.VLevel += (steps_lp[0][ADC_POT_sel_cnt] - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4;
-			  //			  Steps[0][ADC_POT_sel_cnt].b.VLevel += ((uint16_t) ADC1->DR - Steps[0][ADC_POT_sel_cnt].b.VLevel) >> 4;
-			};
-			NeedInc = 1;
-		};
-
-		//If expander is connected calculate additional voltagesH
-		if(Is_Expander_Present())
-		{
-			if (  (ADC_POT_sel_cnt>=40 && (ADC_POT_sel_cnt<=55))) {
-				if ( (Steps[1][ADC_POT_sel_cnt-24].b.WaitVoltageSlider == 1) ) {
-						if ( (unsigned int) (ADC1->DR) == (unsigned int) Steps[1][ADC_POT_sel_cnt-24].b.VLevel ) {
-							Steps[1][ADC_POT_sel_cnt-24].b.WaitVoltageSlider = 0;
-						};
-				} else {
-					Steps[1][ADC_POT_sel_cnt-24].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[1][ADC_POT_sel_cnt-24].b.VLevel)/2;
-				};
-				if ( (Steps[0][ADC_POT_sel_cnt-24].b.WaitVoltageSlider == 1) ) {
-				if ( (unsigned int) (ADC1->DR) == (unsigned int) Steps[0][ADC_POT_sel_cnt-24].b.VLevel ) {
-							Steps[0][ADC_POT_sel_cnt-24].b.WaitVoltageSlider = 0;
-				};
-				} else {
-					Steps[0][ADC_POT_sel_cnt-24].b.VLevel = ((unsigned int) (ADC1->DR)+(unsigned int) Steps[0][ADC_POT_sel_cnt-24].b.VLevel)/2;
-				};
-				NeedInc = 1;
-			}
-
-			//Calculate average of 2 measurements for time sliders
-				if ((ADC_POT_sel_cnt>=56) && (ADC_POT_sel_cnt<=71)) {
-				  Steps[0][ADC_POT_sel_cnt-40].b.TLevel += ((unsigned int) ADC1->DR - Steps[0][ADC_POT_sel_cnt-40].b.TLevel) >> 4 ;
-				  Steps[1][ADC_POT_sel_cnt-40].b.TLevel += ((unsigned int) ADC1->DR - Steps[1][ADC_POT_sel_cnt-40].b.TLevel) >> 4 ;
-				    //    Steps[0][ADC_POT_sel_cnt-40].b.TLevel = (Steps0][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
-				    //    Steps[1][ADC_POT_sel_cnt-40].b.TLevel = (Steps[1][ADC_POT_sel_cnt-40].b.TLevel+(unsigned int)(ADC1->DR))/2;
-				NeedInc = 1;
-			};
-		}
-		// Calculate time slider values
-		// Time sliders for steps 1-16 are pots 24--39 inclusive.
-		if ((ADC_POT_sel_cnt>=24) && (ADC_POT_sel_cnt<=39)) {
-
-		  if (Steps[0][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting?
-		    if ((unsigned int)Steps[0][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting
-		      {
-			Steps[0][ADC_POT_sel_cnt-24].b.WaitTimeSlider = 0;
-		      }
-		  }
-		  else
-		    {
-		      // Two-pole filter
-		      tsteps_lp[0][ADC_POT_sel_cnt-24] += ((uint16_t) ADC1->DR - tsteps_lp[0][ADC_POT_sel_cnt-24]) >> 4;
-		      Steps[0][ADC_POT_sel_cnt-24].b.TLevel += (tsteps_lp[0][ADC_POT_sel_cnt-24] - Steps[0][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ;
-			// Steps[0][ADC_POT_sel_cnt-24].b.TLevel = (Steps[0][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
-		    }
-		  if (Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider) {		  // Are we waiting?
-		    if ((unsigned int)Steps[1][ADC_POT_sel_cnt-24].b.TLevel >> 4 == (unsigned int)(ADC1->DR)>>4) // close enough, stop waiting
-		      {
-			Steps[1][ADC_POT_sel_cnt-24].b.WaitTimeSlider = 0;
-		      }
-		  }
-		  else
-		    {
-		      // Two-pole filter
-		      tsteps_lp[1][ADC_POT_sel_cnt-24] += ((uint16_t) ADC1->DR - tsteps_lp[1][ADC_POT_sel_cnt-24]) >> 4;
-		      Steps[1][ADC_POT_sel_cnt-24].b.TLevel += (tsteps_lp[1][ADC_POT_sel_cnt-24] - Steps[1][ADC_POT_sel_cnt-24].b.TLevel) >> 4 ;
-			//	Steps[1][ADC_POT_sel_cnt-24].b.TLevel = (Steps[1][ADC_POT_sel_cnt-24].b.TLevel+(unsigned int)(ADC1->DR))/2;
-		    }
-		  NeedInc = 1;
-		};
-
-
-		//Clear end of conversion flag
-		ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
-
-	}
-
-	//ADC2 used for external inputs conversion
-		if ( ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET ) {
-		if ((ADC_POT_sel_cnt>=16) && (ADC_POT_sel_cnt<=23)) {
-		  //		  			AddData[ADC_POT_sel_cnt-16] = (unsigned int)(ADC2->DR);
-		  // One pole filter on the external inputs for now
-		  // NB this code only works when AddData is a uint16_t; unsigned int does not work properly
-		  // because of how the compiler handles arithmetic on unsigned values. 
-		   AddData[ADC_POT_sel_cnt-16] += ((uint16_t) (ADC2->DR) - AddData[ADC_POT_sel_cnt-16])>>4; 
-			NeedInc = 1;
-		};
-		ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
-
-	};
-
-		//Calculate next channel to measure
-		// and now also switch the MUX here. GAM 05/04/2020
-	if(Is_Expander_Present())
-	{
-	  if (NeedInc) {
-		/* ADC_POT_sel_cnt++; */
-		/* if (ADC_POT_sel_cnt >= 72) {//40 */
-		/* 	ADC_POT_sel_cnt = 0; */
-		/* }; */
-		/* ADC_POTS_selector_Ch(ADC_POT_sel_cnt); */
-	    ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt); // figure out next pot and switch the mux
-		delay_us(10); // don't know if there is time for this!
-	  };
-	}
-	else
-	{
-	  if (NeedInc) {
-		/* ADC_POT_sel_cnt++; */
-		/* if (ADC_POT_sel_cnt >= 40) {//40 */
-		/* 	ADC_POT_sel_cnt = 0; */
-		/* }; */
-		/* ADC_POTS_selector_Ch(ADC_POT_sel_cnt); */
-	    ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt); // figure out next pot and switch the mux
-		delay_us(10);
-	  };
-	}
 };
 
 
