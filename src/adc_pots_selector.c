@@ -135,11 +135,14 @@ void ADC_POTS_selector_SendByte(unsigned char data)
 		} else {
 			ADC_POTS_SELECTOR_DATA_LOW;
 		}
-		DELAY_CLOCK(); // data setup to serial clock time, 100ns target
+		/* DELAY_NOPS(); // data setup to serial clock time, 100ns target */
+		/* ADC_POTS_SELECTOR_SHIFT_LOW; */
+		/* DELAY_NOPS();  // serial clock pulse should be 80ns */
+		/* ADC_POTS_SELECTOR_SHIFT_HIGH; */
 		ADC_POTS_SELECTOR_SHIFT_LOW;
-		DELAY_CLOCK();  // serial clock pulse should be 80ns
+		DELAY_NOPS();
 		ADC_POTS_SELECTOR_SHIFT_HIGH;
-   
+		DELAY_NOPS(); 
 		dat = dat << 1;
 	}
 	
@@ -158,31 +161,35 @@ void ADC_POTS_selector_SendHalfByte(unsigned char data)
 		} else {
 			ADC_POTS_SELECTOR_DATA_LOW;
 		}
-		DELAY_CLOCK(); // data setup to serial clock time, 100ns target
+		/* DELAY_CLOCK(); // data setup to serial clock time, 100ns target */
+		/* ADC_POTS_SELECTOR_SHIFT_LOW; */
+		/* DELAY_CLOCK();  // serial clock pulse should be 80ns */
+		/* ADC_POTS_SELECTOR_SHIFT_HIGH; */
 		ADC_POTS_SELECTOR_SHIFT_LOW;
-		DELAY_CLOCK();  // serial clock pulse should be 80ns
+		DELAY_NOPS(); // clock pulse width 120ns or so; also gives long enough for data to settle
 		ADC_POTS_SELECTOR_SHIFT_HIGH;
-   
+		DELAY_NOPS(); 
 		dat = dat << 1;
 	}
 	
-	ADC_POTS_SELECTOR_DATA_LOW;
+		ADC_POTS_SELECTOR_DATA_LOW;
 
 }
 
 //Send 5 bytes to ADC channels multiplexers
 void ADC_POTS_selector_SendDWord(unsigned long long int data)
 {	
-	ADC_POTS_selector_SendByte((unsigned char) ((data&0xFF00000000)>>32));
-	ADC_POTS_selector_SendByte((unsigned char) ((data&0xFF000000)>>24));
-	ADC_POTS_selector_SendByte((unsigned char) ( data&0x000000FF));
-	ADC_POTS_selector_SendByte((unsigned char) ((data&0x0000FF00)>>8));
-	ADC_POTS_selector_SendByte((unsigned char) ((data&0x00FF0000)>>16));
-
+  ADC_POTS_SELECTOR_STORAGE_LOW; 
+  ADC_POTS_selector_SendByte((unsigned char) ((data&0xFF00000000)>>32));
+  ADC_POTS_selector_SendByte((unsigned char) ((data&0xFF000000)>>24));
+  ADC_POTS_selector_SendByte((unsigned char) ( data&0x000000FF));
+  ADC_POTS_selector_SendByte((unsigned char) ((data&0x0000FF00)>>8));
+  ADC_POTS_selector_SendByte((unsigned char) ((data&0x00FF0000)>>16));
+  
 	
-	ADC_POTS_SELECTOR_STORAGE_LOW;
-	DELAY_CLOCK();  
-	ADC_POTS_SELECTOR_STORAGE_HIGH;
+  //	ADC_POTS_SELECTOR_STORAGE_LOW;
+  //	DELAY_CLOCK();  
+  ADC_POTS_SELECTOR_STORAGE_HIGH; // sendbyte had enough delay at the end
 }
 
 //Select ADC channel
@@ -194,6 +201,7 @@ void ADC_POTS_selector_Ch(unsigned char Ch)
 //Select next ADC channel and tell which it is 
 unsigned char ADC_inc(unsigned char pot)
 {
+  ADC_POTS_SELECTOR_STORAGE_LOW;
   /* Muxes are addressed by three shift registers in series as follows: */
   /*   1. time sliders aka pots 24-39 */
   /*   2. (first half) external voltages aka pots 16-23 */
@@ -220,10 +228,11 @@ unsigned char ADC_inc(unsigned char pot)
       _pot = pot + 8; // otherwise shift just moves pot count along by 8
     }
   }
-  // activate the shift register with the new data
-  ADC_POTS_SELECTOR_STORAGE_LOW;
-  DELAY_CLOCK(); // serial clock pulse should be 80ns
-  ADC_POTS_SELECTOR_STORAGE_HIGH;
+  /* // activate the shift register with the new data */
+  /* ADC_POTS_SELECTOR_STORAGE_LOW; */
+  /* DELAY_CLOCK(); // serial clock pulse should be 80ns */
+  ADC_POTS_SELECTOR_STORAGE_HIGH;// think the sendbyte and sendhalfbyte have enough delay at the end
+  DELAY_NOPS(); 
   // tell the main interrupt which pot we're on now
   return _pot; 
 }

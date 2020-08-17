@@ -48,8 +48,9 @@ void LEDS_modes_SendByte(unsigned char data)
 		}
 		
 		LEDS_MODES_SHIFT_LOW;		
+		DELAY_NOPS();
 		LEDS_MODES_SHIFT_HIGH;
-
+		DELAY_NOPS(); 
 		dat = dat << 1;
 	}
 	LEDS_MODES_DATA_LOW;
@@ -58,23 +59,22 @@ void LEDS_modes_SendByte(unsigned char data)
 
 void LEDS_modes_SendDWord(unsigned long int data)
 {
+	LEDS_MODES_STORAGE_LOW;
 	LEDS_modes_SendByte( data&0x000000FF);
 	LEDS_modes_SendByte((data&0x0000FF00)>>8);
 	LEDS_modes_SendByte((data&0x00FF0000)>>16);
 	LEDS_modes_SendByte((data&0xFF000000)>>24);
-
-	LEDS_MODES_STORAGE_LOW;
 	LEDS_MODES_STORAGE_HIGH;
 }
 
 
 void LEDS_modes_SendStruct(uLeds *_Leds)
 {
+	LEDS_MODES_STORAGE_LOW;
 	LEDS_modes_SendByte(_Leds->value[0]);
 	LEDS_modes_SendByte(_Leds->value[1]);
 	LEDS_modes_SendByte(_Leds->value[2]);
 	LEDS_modes_SendByte(_Leds->value[3]);
 
-	LEDS_MODES_STORAGE_LOW;
 	LEDS_MODES_STORAGE_HIGH;
 }
