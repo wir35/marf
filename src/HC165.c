@@ -3,6 +3,15 @@
 #include <stm32f4xx_gpio.h>
 #include "HC165.h"
 
+
+// Timing delays for the shift register data
+// Experimental! Could be too short
+#define DELAY_CLOCK() ({ for (uint32_t d = 20; d != 0; d--) {} })
+#define DELAY_LATCH() ({ for (uint32_t d = 20; d != 0; d--) {} })
+#define DELAY_NOPS() ({asm("nop"); asm("nop");asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop");})
+
+
+
 #define SW_DAT	GPIO_Pin_0
 #define SW_CP		GPIO_Pin_1
 #define SW_CE		GPIO_Pin_2
@@ -61,37 +70,42 @@ void HC165_LatchUp(void)
 {
 	CE_LOW;
 	CLK_LOW;
-
 	SS_LOW;
-	delay_us(1);
-	SS_HIGH;	
+	//	delay_us(1);
+	 DELAY_NOPS(); 
+	SS_HIGH;
+	DELAY_NOPS(); 
 }
 
 
 unsigned char HC165_GetByte(void)
 {
 	unsigned char data = 0x00, cnt = 0;	
-
+	DELAY_NOPS(); 
 	if (  GPIO_ReadInputDataBit(GPIOC, SW_DAT) == 1 ) {
 		data = data | (0x01);
 	};
 
 	CLK_HIGH;	
+	DELAY_NOPS();
 
 	for(cnt=0; cnt<7;cnt++)
 	{
-		CLK_LOW;
-		delay_us(1);
+	  CLK_LOW;
+	  //		delay_us(1);
+	  DELAY_NOPS(); 
 
 		data = data << 1;		
 		if (  GPIO_ReadInputDataBit(GPIOC, SW_DAT) == 1 ) {
 			data = data | (0x01);
 		};
 		CLK_HIGH;		
-		delay_us(1);		
+		//	 delay_us(1);
+		 DELAY_NOPS(); 
 	}
 
 	CLK_LOW;
+	DELAY_NOPS(); 
 	return data;
 }
 
