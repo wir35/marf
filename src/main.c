@@ -195,7 +195,10 @@ uint16_t readings;
 uint16_t i;
 
 uint16_t tick;
-volatile uint16_t millis;
+volatile uint32_t millis;
+
+
+#define KEY_DEBOUNCE_COUNT 3; 
 
 void systickInit(uint16_t frequency) {
   RCC_ClocksTypeDef RCC_Clocks;
@@ -2248,26 +2251,18 @@ unsigned char keyb_proc(uButtons * key)
 				if (gEditModeStepNum > 0) {
 					if(counterL == 0) gEditModeStepNum--;
 					//if long press switch to repeate selection
-					else if(counterL >= 500)
-					{
-						if(counterL > 600)
-						{
-							counterL = 500;
+					else if(counterL > 120) {
+							counterL = 100;
 							gEditModeStepNum--;
-						}
 					}
 					counterL++;
 					DisplayUpdateFlags.b.MainDisplay = 1;
 					DisplayUpdateFlags.b.StepsDisplay = 1;
 				} else {
 					if(counterL == 0) gEditModeStepNum = max_step;
-					else if(counterL >= 500)
-					{
-						if(counterL > 600)
-						{
-							counterL = 500;
-							gEditModeStepNum = max_step;
-						}
+					else if(counterL > 120)	{
+					  counterL = 100;
+					  gEditModeStepNum = max_step;
 					}
 					counterL++;
 					//gEditModeStepNum = max_step;
@@ -2281,69 +2276,61 @@ unsigned char keyb_proc(uButtons * key)
 				 (gDisplayMode == DISPLAY_MODE_LOAD_1) || (gDisplayMode == DISPLAY_MODE_LOAD_2) ) {
 				if (gEditModeStepNum > 0) {
 					if(counterL == 0) gEditModeStepNum--;
-					else if(counterL >= 500)
-					{
-						if(counterL > 600)
-						{
-							counterL = 500;
-							gEditModeStepNum--;
-						}
+					else if(counterL > 120) {
+					  counterL = 100;
+					  gEditModeStepNum--;
 					}
 					counterL++;
 					DisplayUpdateFlags.b.StepsDisplay = 1;
 				} else {
 					if(counterL == 0) 
 					{
-							if(!Is_Expander_Present())
-							{	
-							gEditModeStepNum = 15;
-							if(bank == 1) 
-							{
-								bank = 2;
-							}
-							else 
-							{
-								bank = 1;
-							}
-							}
-							else gEditModeStepNum = 31;
-					}
-					else if(counterL >= 500)
-					{
-						if(counterL > 600)
+					  if(!Is_Expander_Present())
+					    {	
+					      gEditModeStepNum = 15;
+					      if(bank == 1) 
 						{
-							counterL = 500;
-							if(!Is_Expander_Present())
-							{	
-								gEditModeStepNum = 15;
-								if(bank == 1) 
-								{
-									bank = 2;
-								}
-								else 
-								{
-									bank = 1;
-								}
-							}
-							else gEditModeStepNum = 31;
+						  bank = 2;
 						}
+					      else 
+						{
+						  bank = 1;
+						}
+					    }
+					  else gEditModeStepNum = 31;
+					}
+					else if(counterL > 120) {
+					  counterL = 100;
+					  if(!Is_Expander_Present())
+					    {	
+					      gEditModeStepNum = 15;
+					      if(bank == 1) 
+						{
+						  bank = 2;
+						}
+					      else 
+						{
+						  bank = 1;
+						}
+					    }
+					  else gEditModeStepNum = 31;
 					}
 					counterL++;
-
+					
 					DisplayUpdateFlags.b.StepsDisplay = 1;
 				};
 			};
 		}
 		else 
-		{
-			counterL = 0;
-		};
+		  {
+		    counterL = 0;
+		  };
 		
 		if ( !key->b.StepRight ) {
-			if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
-				gDisplayMode = DISPLAY_MODE_EDIT_1;
-				gEditModeStepNum = max_step;
-			};
+		  if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
+		    gDisplayMode = DISPLAY_MODE_EDIT_1;
+		    gEditModeStepNum = max_step;
+		  };
 			if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
 				gDisplayMode = DISPLAY_MODE_EDIT_2;
 				gEditModeStepNum = max_step;
@@ -2359,9 +2346,9 @@ unsigned char keyb_proc(uButtons * key)
 						}
 				} else {
 					if(counterR == 0) gEditModeStepNum = 0;
-					else if(counterR > 600) 
+					else if(counterR > 120) 
 						{
-							counterR = 500;
+							counterR = 100;
 							gEditModeStepNum = 0;
 						}
 				}
@@ -2375,19 +2362,14 @@ unsigned char keyb_proc(uButtons * key)
 				(gDisplayMode == DISPLAY_MODE_LOAD_1) || (gDisplayMode == DISPLAY_MODE_LOAD_2)) {
 				if (gEditModeStepNum < max_step) {
 					if(counterR == 0) gEditModeStepNum++;
-					else if(counterR >= 500)
-					{
-						if(counterR > 600)
-						{
-							counterR = 500;
-							gEditModeStepNum++;
-						}
+					else if(counterR > 120) { 
+					  counterR = 100;
+					  gEditModeStepNum++;
 					}
 					counterR++;
 					DisplayUpdateFlags.b.StepsDisplay = 1;
 				} else {
-					
-					if(counterR == 0) 
+				  if(counterR == 0) 
 					{
 							if(!Is_Expander_Present())
 							{	
@@ -2407,39 +2389,35 @@ unsigned char keyb_proc(uButtons * key)
 								gEditModeStepNum = 0;
 							}
 					}
-					else if(counterR >= 500)
-					{
-						if(counterR > 600)
-						{
-							counterR = 500;
-							if(!Is_Expander_Present())
-							{	
-								gEditModeStepNum = 0;
-								if(bank == 1) 
-								{
-									bank = 2;
-									
-								}
-								else 
-								{
-									bank = 1;
-								}
-							}
-							else 
-							{
-								gEditModeStepNum = 0;
-							}
-						}
-					}
-					counterR++;
-
-					DisplayUpdateFlags.b.StepsDisplay = 1;
+				  else if(counterR > 120) {
+				    counterR = 100;
+				    if(!Is_Expander_Present())
+				      {	
+					gEditModeStepNum = 0;
+					if(bank == 1) 
+					  {
+					    bank = 2;
+					    
+					  }
+					else 
+					  {
+					    bank = 1;
+					  }
+				      }
+				    else 
+				      {
+					gEditModeStepNum = 0;
+				      }
+				  }
+				  counterR++;
+				  
+				  DisplayUpdateFlags.b.StepsDisplay = 1;
 				};
 			};
 		}
 		else 
 		{
-			counterR = 0;
+		  counterR = 0;
 		};
 	key_locked = 1;
 		
@@ -3029,9 +3007,13 @@ int main(void)
 	uButtons myButtons;
 	uLeds mLeds;	
 	unsigned char _cnt;
-	volatile unsigned long long int key_state, prev_key_state;
-
-	unsigned char KeyThreshHoldCnt = 0, max_step;
+	volatile unsigned long long int key_state, prev_key_state, raw_key_state;
+	uint32_t key_timestamp=0; 
+	uint16_t keys_debounce =0; 
+	unsigned char keys_stable = 0; 
+	
+	//unsigned char KeyThreshHoldCnt = 0, max_step;
+	unsigned char max_step; 
 	uint16_t  next_step_tres = 0, prev_step_tres = 0, temp;
 	int i, j;
 	long acc;	
@@ -3158,42 +3140,38 @@ int main(void)
 
 		/* keys proceed */
 		//		if (KeyThreshHoldCnt == 0) {
-		if (millis < 5) {
-			key_state = GetButton();
-			millis = 5; 
-
+		if ((uint16_t)(millis - key_timestamp) > 5) { // time to scan the switches
+			raw_key_state = GetButton();
+			key_timestamp = millis;
+			if (raw_key_state == key_state) {
+			  if (--keys_debounce == 0) { // stable now
+			    keys_stable = 1;
+			    keys_debounce = KEY_DEBOUNCE_COUNT;
+			  }
+			}
+			else {
+			  keys_debounce = KEY_DEBOUNCE_COUNT;
+			  key_state = raw_key_state;
+			  keys_stable = 0; 
+			}
+			if (keys_stable) {
+			  myButtons.value = key_state;			
+			  if (key_state != prev_key_state || myButtons.b.StepRight == 0 || myButtons.b.StepLeft == 0) {
+			    tick = 0; 
+			    keyb_proc(&myButtons);
+			    tick = 1; 
+			    prev_key_state = key_state;
+			  }
+			}
 		};		
 		
 		//		if (KeyThreshHoldCnt == 2) {
-		if (millis > 10) {
-		  millis = 0; 
-			if (key_state == GetButton()) {	
-				myButtons.value = key_state;			
-							if ( 	(gDisplayMode != DISPLAY_MODE_SAVE_1) && (gDisplayMode != DISPLAY_MODE_SAVE_2) &&
-						(gDisplayMode != DISPLAY_MODE_LOAD_1) && (gDisplayMode != DISPLAY_MODE_LOAD_2) ) 
-			{
-				if (key_state != prev_key_state || myButtons.b.StepRight == 0 || myButtons.b.StepLeft == 0) {
-				  tick = 0; 
-						keyb_proc(&myButtons);
-						tick = 1; 
-						prev_key_state = key_state;
-				};
-			}
-			else 
-			{
-							if (key_state != prev_key_state || myButtons.b.StepRight == 0 || myButtons.b.StepLeft == 0) {
-						
-						keyb_proc(&myButtons);
-						prev_key_state = key_state;
-				};	
-			}
-			};
-		};
+		
 
-		KeyThreshHoldCnt++;
-		if (KeyThreshHoldCnt > 2) {
-			KeyThreshHoldCnt = 0;
-		};
+		/* KeyThreshHoldCnt++; */
+		/* if (KeyThreshHoldCnt > 2) { */
+		/* 	KeyThreshHoldCnt = 0; */
+		/* }; */
 		/* ENDOF: keys proceed */
 		
 		//Update panel state
