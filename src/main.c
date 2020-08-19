@@ -198,7 +198,8 @@ uint16_t tick;
 volatile uint32_t millis;
 
 
-#define KEY_DEBOUNCE_COUNT 3; 
+#define KEY_DEBOUNCE_COUNT 3
+#define KEY_TIMER 5 // scan switches every 5ms
 
 void systickInit(uint16_t frequency) {
   RCC_ClocksTypeDef RCC_Clocks;
@@ -3140,7 +3141,7 @@ int main(void)
 
 		/* keys proceed */
 		//		if (KeyThreshHoldCnt == 0) {
-		if ((uint16_t)(millis - key_timestamp) > 5) { // time to scan the switches
+		if ((uint16_t)(millis - key_timestamp) > KEY_TIMER) { // time to scan the switches
 			raw_key_state = GetButton();
 			key_timestamp = millis;
 			if (raw_key_state == key_state) {
