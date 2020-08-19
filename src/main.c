@@ -195,6 +195,19 @@ uint16_t readings;
 uint16_t i;
 
 uint16_t tick;
+volatile uint16_t millis;
+
+void systickInit(uint16_t frequency) {
+  RCC_ClocksTypeDef RCC_Clocks;
+  RCC_GetClocksFreq(&RCC_Clocks);
+  (void) SysTick_Config(RCC_Clocks.HCLK_Frequency / frequency);
+}
+ 
+void SysTick_Handler (void)
+ {
+   millis++; 
+ }
+
 
 //ADC interrupt handler
 void ADC_IRQHandler()
@@ -2339,32 +2352,23 @@ unsigned char keyb_proc(uButtons * key)
 						(gDisplayMode == DISPLAY_MODE_EDIT_2) ) {
 				if (gEditModeStepNum < max_step) {
 					if(counterR == 0) gEditModeStepNum++;
-					else if(counterR >= 500)
-					{
-						if(counterR > 600)
+					else if (counterR > 120)//was 600
 						{
-							counterR = 500;
-							gEditModeStepNum++;
+						  counterR = 100;//was 500
+						  gEditModeStepNum++;
 						}
-					}
-					counterR++;
-					DisplayUpdateFlags.b.MainDisplay = 1;
-					DisplayUpdateFlags.b.StepsDisplay = 1;
 				} else {
 					if(counterR == 0) gEditModeStepNum = 0;
-					else if(counterR >= 500)
-					{
-						if(counterR > 600)
+					else if(counterR > 600) 
 						{
 							counterR = 500;
 							gEditModeStepNum = 0;
 						}
-					}
-					counterR++;
-					DisplayUpdateFlags.b.MainDisplay = 1;
-					DisplayUpdateFlags.b.StepsDisplay = 1;
-				};
-			};			
+				}
+				counterR++;
+				DisplayUpdateFlags.b.MainDisplay = 1;
+				DisplayUpdateFlags.b.StepsDisplay = 1;
+			}			
 						
 			//if in save or load mode right buttons select memory cell for save/recall
 			if ( (gDisplayMode == DISPLAY_MODE_SAVE_1) || (gDisplayMode == DISPLAY_MODE_SAVE_2) ||
@@ -2438,7 +2442,6 @@ unsigned char keyb_proc(uButtons * key)
 			counterR = 0;
 		};
 	key_locked = 1;
-	
 		
 		//Sections 1/2
 	if (gKeysNotValid == 0) {
@@ -3055,6 +3058,9 @@ int main(void)
 	//Debug stuff
 	RCC_GetClocksFreq(&RCC_Clocks);
 
+	// SysTick is my new idea
+	systickInit(1000); 
+	
 	PulsesInit();
 	DisplayLedsIOInit();
 		
@@ -3151,12 +3157,16 @@ int main(void)
 		}
 
 		/* keys proceed */
-		if (KeyThreshHoldCnt == 0) {
+		//		if (KeyThreshHoldCnt == 0) {
+		if (millis < 5) {
 			key_state = GetButton();
+			millis = 5; 
 
 		};		
 		
-		if (KeyThreshHoldCnt == 2) {
+		//		if (KeyThreshHoldCnt == 2) {
+		if (millis > 10) {
+		  millis = 0; 
 			if (key_state == GetButton()) {	
 				myButtons.value = key_state;			
 							if ( 	(gDisplayMode != DISPLAY_MODE_SAVE_1) && (gDisplayMode != DISPLAY_MODE_SAVE_2) &&
@@ -3179,7 +3189,7 @@ int main(void)
 			}
 			};
 		};
-		
+
 		KeyThreshHoldCnt++;
 		if (KeyThreshHoldCnt > 2) {
 			KeyThreshHoldCnt = 0;
