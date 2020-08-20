@@ -48,8 +48,7 @@ volatile unsigned char 	ADC_POT_sel_cnt = 0;
 
 #define PulseStatus printf("Line: %i \n Step#; %i \n Mode: %d \n  PrevMode: %d \n Pulse1: %i \n \n", __LINE__, gSequenceStepNumber_1,gSequencerMode_1,gPrevSequencerMode_1, (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) );
 
-#define scale(in) (in<121)?0:(in>3975)?4095:(in*17/16)-128;
-	
+#define scale(in) (in<30)?0:(in>4031)?4095:(in*131/128)-30;	
 //Union with flags which allows to update different parts of panel
 typedef union
 {
