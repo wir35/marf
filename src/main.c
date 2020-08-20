@@ -17,6 +17,7 @@
 #include "data_types.h"
 #include "dip_config.h"
 #include "expander.h"
+#include "version.h"
 #include "stdio.h"
 
 #define AIRCR_VECTKEY_MASK    ((uint32_t)0x05FA0000)
