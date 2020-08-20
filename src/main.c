@@ -291,7 +291,15 @@ void ADC_IRQHandler()
       }
       break;
     case POT_TYPE_OTHER:
-      AddData[stage] += (adcreading - AddData[stage])>>4;
+      switch (stage) {
+      case ADC_STAGEADDRESS_Ch_1:
+      case ADC_STAGEADDRESS_Ch_2: 
+	AddData[stage] += (adcreading - AddData[stage])>>2;
+	break;
+      default:
+	AddData[stage] += (adcreading - AddData[stage])>>4;
+	break; 
+      }
       break; 
     }
 
