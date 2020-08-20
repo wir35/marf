@@ -2878,10 +2878,10 @@ void PermutePulses(void)
   // Flash pulse 1 until one of the switches is activated
   while (myButtons.b.Pulse1On && myButtons.b.Pulse2On) {
     i++;
-    if (i<200) {
+    if (i<1200) {
         mLeds.b.Pulse1 = 1;
     }
-    else if (i<400) {
+    else if (i<2400) {
               mLeds.b.Pulse1 = 0;
     }
     else {
@@ -2901,6 +2901,9 @@ void PermutePulses(void)
   CAT25512_write_block(100*sizeof(Steps)+sizeof(CalConstants),&swapped_pulses,1);
   mLeds.b.Pulse1=0;
   LEDS_modes_SendStruct(&mLeds);
+  while (!(myButtons.b.Pulse1On && myButtons.b.Pulse2On)) {
+    myButtons.value = GetButton(); 
+  }
 }
 
 
