@@ -175,7 +175,9 @@ volatile uint16_t times_lp[32];
 
 volatile uint16_t adcreading; 
 
-volatile uint16_t step1; 
+volatile uint16_t step1;
+
+unsigned char rev; 
 
 #define POT_TYPE_VOLTAGE 100
 #define POT_TYPE_TIME 101
@@ -3092,6 +3094,10 @@ int main(void)
 	
 	gSequencerMode_1 = SEQUENCER_MODE_STOP;
 	gSequencerMode_2 = SEQUENCER_MODE_STOP;
+
+	// Check which version of the MCU we have
+	versionInit();
+	rev = versionRevised();
 	
 //Scan initial state	
 	key_state = GetButton();
