@@ -51,7 +51,7 @@ volatile unsigned char 	ADC_POT_sel_cnt = 0;
 
 
 //#define scale(in) (in<30)?0:(in>4031)?4095:(in*131/128)-30;
-#define scale(in) (in<30)?0:(in>4060)?4125:(in*131/128)-30;	
+#define scale(in) (in<30)?0:(in>4030)?4125:(in*132/128)-30;	
 //Union with flags which allows to update different parts of panel
 typedef union
 {
