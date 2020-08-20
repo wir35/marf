@@ -73,7 +73,7 @@ volatile uStep Steps[2][32];				//Main steps array data
 //volatile unsigned int AddData[8];		//Additional analog data
 volatile uint16_t AddData[8];		//Additional analog data
 volatile unsigned int CalConstants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};		//Additional analog data
-volatile unsigned int swapped_pulses = 0; // do the pulse LEDs need to be swapped? 
+unsigned char swapped_pulses = 0; // do the pulse LEDs need to be swapped? 
 
 //Display modes
 #define DISPLAY_MODE_VIEW_1				0
@@ -2886,7 +2886,7 @@ void PermutePulses(void)
     swapped_pulses = 1;
   }
   // Write selection to memory, reset LEDs and return
-  CAT25512_WriteByte(100*sizeof(Steps)+sizeof(CalConstants),swapped_pulses);
+  CAT25512_write_block(100*sizeof(Steps)+sizeof(CalConstants),&swapped_pulses,1);
   mLeds.b.Pulse1=0;
   LEDS_modes_SendStruct(&mLeds);
 }
