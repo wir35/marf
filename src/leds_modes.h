@@ -8,6 +8,8 @@
 #ifndef LEDS_MODES_H_
 #define LEDS_MODES_H_
 
+#define DELAY_NOPS() ({asm("nop"); asm("nop");asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop");})
+
 //Union which allows to control each led on panel separately
 typedef union
 {

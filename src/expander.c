@@ -5,16 +5,16 @@
 
 void Init_Expander_GPIO(void)
 {
-	GPIO_InitTypeDef mGPIO_InitStructure;
+	/* GPIO_InitTypeDef mGPIO_InitStructure; */
 	
-	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
+	/* RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE); */
 	
-	mGPIO_InitStructure.GPIO_Pin 		= EXPANDER_PIN;
-	mGPIO_InitStructure.GPIO_Mode 	= GPIO_Mode_IN;
-	mGPIO_InitStructure.GPIO_PuPd 	= GPIO_PuPd_DOWN;
-	mGPIO_InitStructure.GPIO_Speed 	= GPIO_Speed_2MHz;
+	/* mGPIO_InitStructure.GPIO_Pin 		= EXPANDER_PIN; */
+	/* mGPIO_InitStructure.GPIO_Mode 	= GPIO_Mode_IN; */
+	/* mGPIO_InitStructure.GPIO_PuPd 	= GPIO_PuPd_DOWN; */
+	/* mGPIO_InitStructure.GPIO_Speed 	= GPIO_Speed_2MHz; */
 	
-	GPIO_Init(EXPANDER_GPIO, &mGPIO_InitStructure);
+	/* GPIO_Init(EXPANDER_GPIO, &mGPIO_InitStructure); */
 }
 
 /*Returns 1 if expander is connected, otherwise returns 0*/

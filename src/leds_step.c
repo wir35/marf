@@ -42,8 +42,9 @@ void LED_STEP_SendByte(unsigned char data)
 		}
 
 		LED_STEP_SHIFT_LOW;
+		DELAY_NOPS(); 
 		LED_STEP_SHIFT_HIGH;
-
+		DELAY_NOPS(); 
 		dat = dat << 1;
 	}
 	LED_STEP_DATA_LOW;
@@ -52,10 +53,10 @@ void LED_STEP_SendByte(unsigned char data)
 /*Shift two bytes to HC595 registers which control LEDs*/
 void LED_STEP_SendWord(unsigned long int data)
 {
+	LED_STEP_STORAGE_LOW;
 	LED_STEP_SendByte((unsigned char) ((data&0xFF00)>>8) );
 	LED_STEP_SendByte((unsigned char) (data&0x00FF) );
 
-	LED_STEP_STORAGE_LOW;
 	LED_STEP_STORAGE_HIGH;
 }
 
@@ -81,13 +82,12 @@ void LED_STEP_LightStep(unsigned int StepNum)
 		//if expander is presented we should control 32 LEDs instead of 16
 		tmp1 = dat >> 24;
 		tmp2 = dat >> 16;
-		
+		LED_STEP_STORAGE_LOW;
 		LED_STEP_SendByte((unsigned char) (tmp2) );
 		LED_STEP_SendByte((unsigned char) (tmp1) );
 		LED_STEP_SendByte((unsigned char) (dat >> 8) );
 		LED_STEP_SendByte((unsigned char) (dat) );
 		
-		LED_STEP_STORAGE_LOW;
 		LED_STEP_STORAGE_HIGH;
 		
 	}
