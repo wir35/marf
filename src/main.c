@@ -995,7 +995,8 @@ void LoadSequence(unsigned char SequenceCell)
 /*
 	Returns the duration of step number _StepNum in section _Section
 */
-	#define EXT_VOLTAGE_STEP_SELECT	1023
+	#define EXT_VOLTAGE_STEP_SELECT	1500
+	#define EXT_VOLTAGE_STEP_OFFSET	1000
 
 unsigned long int GetStepWidth(unsigned char _Section, unsigned char _StepNum)
 {
@@ -1006,7 +1007,7 @@ unsigned long int GetStepWidth(unsigned char _Section, unsigned char _StepNum)
 	if (Steps[_Section][_StepNum].b.TimeSource) {
 		
 		//Step time is set externally
-		ext_ban_num = Steps[_Section][_StepNum].b.TLevel/EXT_VOLTAGE_STEP_SELECT;
+	  ext_ban_num = (Steps[_Section][_StepNum].b.TLevel + EXT_VOLTAGE_STEP_OFFSET)/EXT_VOLTAGE_STEP_SELECT;
 		if(ext_ban_num > 3) ext_ban_num = 3;
 		
 		time_level = AddData[ext_ban_num]*(4095.0f/((float)CalConstants[ext_ban_num]));
@@ -1050,7 +1051,7 @@ unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum)
 
 	if (Steps[_Section][_StepNum].b.VoltageSource) {
 		//Step voltage is set externally
-		ext_ban_num = Steps[_Section][_StepNum].b.VLevel/EXT_VOLTAGE_STEP_SELECT;
+	  ext_ban_num = (Steps[_Section][_StepNum].b.VLevel + EXT_VOLTAGE_STEP_OFFSET)/EXT_VOLTAGE_STEP_SELECT;
 		if(ext_ban_num > 3) ext_ban_num = 3;
 		
 		voltage_level = AddData[ext_ban_num]*(4095.0f/((float)CalConstants[ext_ban_num]));
