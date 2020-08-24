@@ -205,6 +205,9 @@ volatile uint32_t millis;
 #define KEY_DEBOUNCE_COUNT 3
 #define KEY_TIMER 5 // scan switches every 5ms
 
+
+#define JUMP_THRESHOLD 150 // threshold for jumping straight to a new ADC reading rather than slewing
+
 void systickInit(uint16_t frequency) {
   RCC_ClocksTypeDef RCC_Clocks;
   RCC_GetClocksFreq(&RCC_Clocks);
@@ -272,8 +275,18 @@ void ADC_IRQHandler()
 	    Steps[j][stage].b.WaitVoltageSlider=0; 
 	  }
 	}
-	else { // store the filtered value 
+	else { // store the filtered value
+	  if (adcreading - Steps[j][stage].b.VLevel > JUMP_THRESHOLD) { // big jumps happen immediately
+	    Steps[j][stage].b.VLevel = adcreading-30;
+	    voltages_lp[stage]=adcreading-15; 
+	    }
+	  else if (Steps[j][stage].b.VLevel - adcreading > JUMP_THRESHOLD) {
+	    Steps[j][stage].b.VLevel = adcreading; 
+	    voltages_lp[stage]=adcreading; 
+	  }
+	  else {
 	  Steps[j][stage].b.VLevel += (voltages_lp[stage] - Steps[j][stage].b.VLevel) >> 4;
+	  }
 	}
       }
       break;
@@ -285,16 +298,34 @@ void ADC_IRQHandler()
 	    Steps[j][stage].b.WaitTimeSlider=0; 
 	  }
 	}
-	else { // store the filtered value 
+	else { // store the filtered value
+	  if (adcreading - Steps[j][stage].b.TLevel > JUMP_THRESHOLD) { // big jumps happen immediately
+	    Steps[j][stage].b.TLevel = adcreading-30;
+	    times_lp[stage]=adcreading-15; 
+	    }
+	  else if (Steps[j][stage].b.TLevel - adcreading > JUMP_THRESHOLD) {
+	    Steps[j][stage].b.TLevel = adcreading; 
+	    times_lp[stage]=adcreading; 
+	  }
+	  else {
 	  Steps[j][stage].b.TLevel += (times_lp[stage] - Steps[j][stage].b.TLevel) >> 4;
+	  }
 	}
       }
       break;
     case POT_TYPE_OTHER:
       switch (stage) {
       case ADC_STAGEADDRESS_Ch_1:
-      case ADC_STAGEADDRESS_Ch_2: 
-	AddData[stage] += (adcreading - AddData[stage])>>2;
+      case ADC_STAGEADDRESS_Ch_2:
+	if (adcreading - AddData[stage] > JUMP_THRESHOLD) {
+	  AddData[stage] = adcreading-3; 
+	}
+	else if (AddData[stage] - adcreading > JUMP_THRESHOLD) {
+	  AddData[stage] = adcreading; 
+	}
+	else {
+	  AddData[stage] += (adcreading - AddData[stage])>>2;
+	}
 	break;
       default:
 	AddData[stage] += (adcreading - AddData[stage])>>4;
