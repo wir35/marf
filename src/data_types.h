@@ -29,7 +29,7 @@ typedef union
 		unsigned int OutputPulse2:1;
 		unsigned int WaitVoltageSlider:1;
 		unsigned int WaitTimeSlider:1;
-		unsigned int NU3:1;
+		unsigned int Swing:1;
 		unsigned int NU4:1;
 	} b;
 	unsigned char val[6];
