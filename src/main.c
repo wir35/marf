@@ -201,8 +201,6 @@ volatile uint32_t millis;
 #define KEY_DEBOUNCE_COUNT 3
 #define KEY_TIMER 5 // scan switches every 5ms
 
-uButtons readButtons;
-
 #define EXTCLOCK_WINDOW 4
 uint32_t jackpins = 0;
 uint32_t prev_jackpins = 0;
@@ -211,7 +209,9 @@ unsigned char stop1 = 0;
 unsigned char start2 = 0;
 unsigned char stop2 = 0;
 unsigned char ExtClock1 =0;
-int swing = 0;
+int swing1 = 0;
+int swing2 = 0;
+
 
 #define JUMP_THRESHOLD 150 // threshold for jumping straight to a new ADC reading rather than slewing
 
@@ -514,7 +514,7 @@ void doStop1() {
   if ((gSequencerMode_1 != SEQUENCER_MODE_WAIT && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z && gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z)) {
 		gPrevSequencerMode_1 = SEQUENCER_MODE_RUN;
 		gSequencerMode_1 = SEQUENCER_MODE_STOP;	
-		swing = 0;
+		swing1 = 0;
 		DisplayUpdateFlags.b.MainDisplay 	= 1;
 		DisplayUpdateFlags.b.StepsDisplay = 1;
 	};
@@ -526,7 +526,7 @@ void doStop2() {
 		 {
 			gPrevSequencerMode_2 = SEQUENCER_MODE_RUN;
 			gSequencerMode_2 = SEQUENCER_MODE_STOP;
-
+			swing2 = 0;
 			//Update both
 			DisplayUpdateFlags.b.MainDisplay = 1;
 			DisplayUpdateFlags.b.StepsDisplay = 1;
@@ -873,8 +873,15 @@ void LoadSequence(unsigned char SequenceCell)
 	
 	gSequencerMode_1 = SEQUENCER_MODE_STOP;
 	gSequencerMode_2 = SEQUENCER_MODE_STOP;
-	
+	if (Steps[0][0].b.Swing){
+		swing1 = 1;
+	}
+	if (Steps[1][0].b.Swing){
+			swing2 = 1;
+		}
+
 	mADC_init();
+
 };
 
 
@@ -1131,6 +1138,8 @@ void TIM4_IRQHandler()
 
 			//printf("Calc next step - input: %i \n MODE:  %d \n", gSequenceStepNumber_1, gSequencerMode_1);
 
+
+
 			if ( (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)   ) { 
 				gSequencerMode_1 =  SEQUENCER_MODE_STOP;
 			};
@@ -1197,7 +1206,7 @@ void TIM4_IRQHandler()
 
 			}
 
-			if (!swing){
+			if (!swing1){
 
 				return;
 			}
@@ -1223,7 +1232,6 @@ void TIM4_IRQHandler()
 
 		if (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE) {
 			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-//printf("Advance generate pulse: \n\n");
 
 						PULSE_LED_I_ALL_ON;
 
@@ -1389,10 +1397,14 @@ void TIM5_IRQHandler()
 			};
 
 			if (gSequencerMode_2 == SEQUENCER_MODE_STOP) {
-								//gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+
 				if(gPrevSequencerMode_2 == SEQUENCER_MODE_RUN)
 							{
 
+							}
+
+							if (!swing2){
+								return;
 							}
 
 							else
@@ -2420,7 +2432,7 @@ unsigned char keyb_proc(uButtons * key)
 				
 		if( key->b.Empty5 && strobe_banana_flag1 == 0)
 		{
-			//swing = 0;
+			swing1 = 0;
 			strobe_banana_flag1 = 1;
 				gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
 
@@ -2447,7 +2459,14 @@ unsigned char keyb_proc(uButtons * key)
 			strobe_banana_flag1 = 0;
 		}
 		if ( (!key->b.StageAddress1PulseSelect) ) {
-			swing = 1;
+			swing1 = 1;
+			int cnt1;
+			for(cnt1=0; cnt1<31; cnt1++)
+					{
+						Steps[0][cnt1].b.Swing = 1;
+
+					}
+
 				gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
 					if ( gDisplayMode == DISPLAY_MODE_VIEW_1 ) {
 		DisplayUpdateFlags.b.MainDisplay = 1;
@@ -2500,6 +2519,14 @@ unsigned char keyb_proc(uButtons * key)
 
 
 		if ( (!key->b.StageAddress2PulseSelect)) {
+			swing2 = 1;
+
+			int cnt1;
+						for(cnt1=0; cnt1<31; cnt1++)
+						{
+							Steps[1][cnt1].b.Swing = 1;
+
+						}
 				gSequenceStepNumber_2 = (unsigned int) (pots_step[1]-1);
 					if ( gDisplayMode == DISPLAY_MODE_VIEW_2 ) {
 		DisplayUpdateFlags.b.MainDisplay = 1;
@@ -2522,7 +2549,13 @@ unsigned char keyb_proc(uButtons * key)
 				
 	/* Stage address ADVANCE 1 KEY*/
 	if (!key->b.StageAddress1ContiniousSelect) {
-		swing = 0;
+			swing1 = 0;
+			int cnt1;
+						for(cnt1=0; cnt1<31; cnt1++)
+								{
+									Steps[0][cnt1].b.Swing = 0;
+
+								}
 
 		if (gSequencerMode_1 != SEQUENCER_MODE_WAIT) {
 			gPrevSequencerMode_1 = gSequencerMode_1;
@@ -2542,6 +2575,14 @@ unsigned char keyb_proc(uButtons * key)
 	};
 	
 	if (!key->b.StageAddress2ContiniousSelect) {	
+			swing2 = 0;
+			int cnt1;
+									for(cnt1=0; cnt1<31; cnt1++)
+											{
+												Steps[1][cnt1].b.Swing = 0;
+
+											}
+
 		if (gSequencerMode_2 != SEQUENCER_MODE_WAIT) {
 			gPrevSequencerMode_2 = gSequencerMode_2;
 			gSequencerMode_2 = SEQUENCER_MODE_WAIT;
@@ -2910,14 +2951,11 @@ void Calibration(void)
 		LEDS_modes_SendStruct(&mLeds);
 		myButtons.value = GetButton();
 	}
-	//Measure external inputs
-	//printf("Measure %d \n ",__LINE__);
 
 	for(i = 0; i < 8 ; i++)
 	{
 		CalConstants[i] = AddData[i];
 		if(CalConstants[i] < 100) CalConstants[i] = 4095;
-		//printf ("\n CalConstants[%d] %d \n", i,CalConstants[i]);
 
 	};
 	//
@@ -2991,13 +3029,14 @@ int main(void)
 	DisplayUpdateFlags.value = 0x00;
 	DisplayUpdateFlags.b.MainDisplay 	= 1;
 	DisplayUpdateFlags.b.StepsDisplay = 1;
-
 	
 	/* Init steps structures */
 	Steps[0][0].b.TimeRange_p3 = 1;
 	Steps[0][0].b.FullRange = 1;
+	Steps[0][0].b.Swing = 0;
 	Steps[1][0] = Steps[0][0];
 	
+
 	for(_cnt=1;_cnt<=31;_cnt++) 
 	{
 		Steps[0][_cnt] = Steps[0][0];		
@@ -3170,12 +3209,6 @@ int main(void)
 				if(pots_step[j] > 16) pots_step[j] = 1;
 			}
 
-			/*if (swing){
-
-				gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-
-			}*/
-		
 			next_step_tres = 0;
 			prev_step_tres = 0;
 			
@@ -3219,11 +3252,6 @@ int main(void)
 	jackpins = GPIO_ReadInputData(GPIOB);
 	if (!(prev_jackpins & 1) && (jackpins & 1)) stop1 = EXTCLOCK_WINDOW; // stop jack rising edge
 	if (!(prev_jackpins & (1<<8)) && (jackpins & (1<<8))) start1 = EXTCLOCK_WINDOW; // start jack rising edge
-
-	if(myButtons.b.StageAddress1Internal){
-		printf ("1\n\n");
-	}
-
 	if (stop1 && start1) { // both signals high means external clock
 	  ExtClockProcessor_1();
 	  stop1 = 0;
@@ -3244,7 +3272,6 @@ int main(void)
 
 		if (!(prev_jackpins & (1<<1)) && (jackpins & (1<<1))) stop2 = EXTCLOCK_WINDOW; // stop jack rising edge
 		if (!(prev_jackpins & (1<<6)) && (jackpins & (1<<6))) start2 = EXTCLOCK_WINDOW; // start jack rising edge
-		//printf ("Process start\n\n");
 		if (stop2 && start2) { // both signals high means external clock
 		  ExtClockProcessor_2();
 		  stop2 = 0;
