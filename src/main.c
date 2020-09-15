@@ -3094,8 +3094,6 @@ int main(void)
 	InternalDACInit();
 	Init_Expander_GPIO();
 	
-	gSequencerMode_1 = SEQUENCER_MODE_STOP;
-	gSequencerMode_2 = SEQUENCER_MODE_STOP;
 
 	// Check which version of the MCU we have
 	versionInit();
@@ -3125,6 +3123,17 @@ int main(void)
 		}
 		swapped_pulses = CAT25512_ReadByte(100*sizeof(Steps)+sizeof(CalConstants));
 	}
+
+	// initialise properly 
+	key_state = GetButton();
+	myButtons.value = key_state;
+	gSequenceStepNumber_1 = 0; 
+	gSequenceStepNumber_2 = 0;
+	gSequencerMode_1 = SEQUENCER_MODE_STOP;
+	gSequencerMode_2 = SEQUENCER_MODE_STOP;
+	keyb_proc(&myButtons);
+	UpdateModeSection();
+	UpdateStepSection();
 
 	while(1) {		
 		//gDipConfig = GetDipConfig();
