@@ -2203,11 +2203,11 @@ unsigned char keyb_proc(uButtons * key)
 		if ( !key->b.StepLeft ) {
 			if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
 				gDisplayMode = DISPLAY_MODE_EDIT_1;
-				gEditModeStepNum = 1;
+				gEditModeStepNum = gSequenceStepNumber_1; //1
 			};
 			if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
 				gDisplayMode = DISPLAY_MODE_EDIT_2;
-				gEditModeStepNum = 1;
+				gEditModeStepNum = gSequenceStepNumber_2; //1
 			};
 			if ( (gDisplayMode == DISPLAY_MODE_EDIT_1) ||
 						(gDisplayMode == DISPLAY_MODE_EDIT_2) ) {
@@ -2292,11 +2292,11 @@ unsigned char keyb_proc(uButtons * key)
 		if ( !key->b.StepRight ) {
 		  if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
 		    gDisplayMode = DISPLAY_MODE_EDIT_1;
-		    gEditModeStepNum = max_step;
+		    gEditModeStepNum = gSequenceStepNumber_1; //max_step;
 		  };
 			if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
-				gDisplayMode = DISPLAY_MODE_EDIT_2;
-				gEditModeStepNum = max_step;
+				gDisplayMode = DISPLAY_MODE_EDIT_2;		
+		    gEditModeStepNum = gSequenceStepNumber_2; //max_step;
 			};
 			if ( (gDisplayMode == DISPLAY_MODE_EDIT_1) ||
 						(gDisplayMode == DISPLAY_MODE_EDIT_2) ) {
