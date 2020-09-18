@@ -127,7 +127,8 @@ volatile unsigned char gStrobeKey = 0;
 volatile unsigned char key_locked = 0;	
 volatile unsigned char gKeysNotValid = 0;
 
-#define STEP_TIMER_FREQ_OUT		8000			//250uSec per timer period
+//#define STEP_TIMER_FREQ_OUT		8000			//250uSec per timer period
+#define STEP_TIMER_FREQ_OUT		4000			//250uSec per timer period because how does 8000 make sense for that? 
 #define STEP_TIMER_PRESCALER	(168000000/2/1/STEP_TIMER_FREQ_OUT)
 
 #define VOLTAGE_FULL_RANGE		4095
