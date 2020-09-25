@@ -127,8 +127,10 @@ volatile unsigned char gStrobeKey = 0;
 volatile unsigned char key_locked = 0;	
 volatile unsigned char gKeysNotValid = 0;
 
-//#define STEP_TIMER_FREQ_OUT		8000			//250uSec per timer period
-#define STEP_TIMER_FREQ_OUT		4000			//250uSec per timer period because how does 8000 make sense for that? 
+#define STEP_TIMER_FREQ_OUT		8000			//250uSec per timer period
+//#define STEP_TIMER_FREQ_OUT		4000			//250uSec per timer period because how does 8000 make sense for that?
+// Ahhh I see. timer period is 1 so timer interrupt is generated after two periods. So this is just bad programming.
+// But timer period is not allowed to be 0 -- turns off the timer. 
 #define STEP_TIMER_PRESCALER	(168000000/2/1/STEP_TIMER_FREQ_OUT)
 
 #define VOLTAGE_FULL_RANGE		4095
@@ -214,7 +216,7 @@ int swing1 = 0;
 int swing2 = 0;
 
 
-#define JUMP_THRESHOLD 150 // threshold for jumping straight to a new ADC reading rather than slewing
+#define JUMP_THRESHOLD 1000 // threshold for jumping straight to a new ADC reading rather than slewing
 
 void systickInit(uint16_t frequency) {
   RCC_ClocksTypeDef RCC_Clocks;
