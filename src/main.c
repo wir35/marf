@@ -229,9 +229,10 @@ void systickInit(uint16_t frequency) {
 //ADC interrupt handler
 void ADC_IRQHandler()
 {
-  unsigned char NeedInc = 0; //, i; // i not needed if not using boxcar averaging scheme
+  unsigned char NeedInc = 0;
   unsigned char pottype;
   unsigned char stage;
+  uint16_t delta = 0;
 
   // what stage are we reading?
   if (ADC_POT_sel_cnt < 16) {
@@ -258,103 +259,109 @@ void ADC_IRQHandler()
   // do we have an ADC value? if so fetch it
   if (pottype == POT_TYPE_OTHER) {  // external voltages, time multiplier or stage select pot
     	if ( ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET) {
-	  adcreading = (uint16_t) ADC2->DR & 0xfff;
-	  NeedInc = 1;
-	}
+    	  adcreading = (uint16_t) ADC2->DR & 0xfff;
+    	  NeedInc = 1;
+    	}
   }
   else { // sliders
-	if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
-	  adcreading = (uint16_t) ADC1->DR & 0xfff;
-	  adcreading =scale(adcreading); // trim and scale slider readings
-	  NeedInc = 1;
-	}
+    if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+      adcreading = (uint16_t) ADC1->DR & 0xfff;
+      adcreading =scale(adcreading); // trim and scale slider readings
+      NeedInc = 1;
+    }
   }
 
   // process the ADC reading
   if (NeedInc) {
     switch (pottype) {
+
     case POT_TYPE_VOLTAGE:
       voltages_lp[stage] += (adcreading - voltages_lp[stage])>>4;
       for (int j=0; j<2; j++) {
-	if (Steps[j][stage].b.WaitVoltageSlider) { // stuck on a preset; shall we unstick?
-	  if (adcreading>>4 == Steps[j][stage].b.VLevel >>4) {
-	    Steps[j][stage].b.WaitVoltageSlider=0; 
-	  }
-	}
-	else { // store the filtered value
-	  if (adcreading - Steps[j][stage].b.VLevel > JUMP_THRESHOLD) { // big jumps happen immediately
-	    Steps[j][stage].b.VLevel = adcreading-30;
-	    voltages_lp[stage]=adcreading-15; 
-	    }
-	  else if (Steps[j][stage].b.VLevel - adcreading > JUMP_THRESHOLD) {
-	    Steps[j][stage].b.VLevel = adcreading; 
-	    voltages_lp[stage]=adcreading; 
-	  }
-	  else {
-	  Steps[j][stage].b.VLevel += (voltages_lp[stage] - Steps[j][stage].b.VLevel) >> 4;
-	  }
-	}
+        if (Steps[j][stage].b.WaitVoltageSlider) {
+          // stuck on a preset; shall we unstick?
+          if (adcreading>>4 == Steps[j][stage].b.VLevel >>4) {
+            Steps[j][stage].b.WaitVoltageSlider=0;
+          }
+        } else {
+          // store the filtered value
+          if (adcreading - Steps[j][stage].b.VLevel > JUMP_THRESHOLD) {
+            // big jumps happen immediately
+            Steps[j][stage].b.VLevel = adcreading-30;
+            voltages_lp[stage]=adcreading-15;
+          } else if (Steps[j][stage].b.VLevel - adcreading > JUMP_THRESHOLD) {
+            Steps[j][stage].b.VLevel = adcreading;
+            voltages_lp[stage]=adcreading;
+          } else {
+            Steps[j][stage].b.VLevel += (voltages_lp[stage] - Steps[j][stage].b.VLevel) >> 4;
+          }
+        }
       }
       break;
+
     case POT_TYPE_TIME:
       times_lp[stage] += (adcreading - times_lp[stage])>>4;
       for (int j=0; j<2; j++) {
-	if (Steps[j][stage].b.WaitTimeSlider) { // stuck on a preset; shall we unstick?
-	  if (adcreading>>4 == Steps[j][stage].b.TLevel >>4) {
-	    Steps[j][stage].b.WaitTimeSlider=0; 
-	  }
-	}
-	else { // store the filtered value
-	  if (adcreading - Steps[j][stage].b.TLevel > JUMP_THRESHOLD) { // big jumps happen immediately
-	    Steps[j][stage].b.TLevel = adcreading-30;
-	    times_lp[stage]=adcreading-15; 
-	    }
-	  else if (Steps[j][stage].b.TLevel - adcreading > JUMP_THRESHOLD) {
-	    Steps[j][stage].b.TLevel = adcreading; 
-	    times_lp[stage]=adcreading; 
-	  }
-	  else {
-	  Steps[j][stage].b.TLevel += (times_lp[stage] - Steps[j][stage].b.TLevel) >> 4;
-	  }
-	}
+        if (Steps[j][stage].b.WaitTimeSlider) {
+          if (adcreading>>4 == Steps[j][stage].b.TLevel >>4) {
+            Steps[j][stage].b.WaitTimeSlider=0;
+          }
+        } else {
+          // store the filtered value
+          if (adcreading - Steps[j][stage].b.TLevel > JUMP_THRESHOLD) {
+            // big jumps happen immediately
+            Steps[j][stage].b.TLevel = adcreading-30;
+            times_lp[stage]=adcreading-15;
+          } else if (Steps[j][stage].b.TLevel - adcreading > JUMP_THRESHOLD) {
+            Steps[j][stage].b.TLevel = adcreading;
+            times_lp[stage]=adcreading;
+          } else {
+            Steps[j][stage].b.TLevel += (times_lp[stage] - Steps[j][stage].b.TLevel) >> 4;
+          }
+        }
       }
       break;
+
     case POT_TYPE_OTHER:
-      switch (stage) {
-      case ADC_STAGEADDRESS_Ch_1:
-      case ADC_STAGEADDRESS_Ch_2:
-	if (adcreading - AddData[stage] > JUMP_THRESHOLD) {
-	  AddData[stage] = adcreading-3; 
-	}
-	else if (AddData[stage] - adcreading > JUMP_THRESHOLD) {
-	  AddData[stage] = adcreading; 
-	}
-	else {
-	  AddData[stage] += (adcreading - AddData[stage])>>2;
-	}
-	break;
-      default:
-	AddData[stage] += (adcreading - AddData[stage])>>4;
-	break; 
+
+      if (adcreading >= AddData[stage]) {
+        delta = adcreading - AddData[stage];
+      } else {
+        delta = AddData[stage] - adcreading;
+      }
+      if (delta < 40) {
+        // 41 ~= 4096 / 100 ~= 0.1v ~= 1 semitone
+        // Apply a lot of filtering when the reading is within 1 semitone
+        AddData[stage] += (adcreading - AddData[stage]) >> 4;
+      } else if (delta < 80) {
+        // Less filtering
+        AddData[stage] += (adcreading - AddData[stage]) >> 2;
+      } else if (delta < 160) {
+        // Less filtering
+        AddData[stage] += (adcreading - AddData[stage]) >> 1;
+      } else {
+        // No filtering
+        AddData[stage] = adcreading;
       }
       break; 
     }
 
+    // Reading ADC's done
+
     ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
     ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
 
-    if(Is_Expander_Present()) {
-      ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt); // figure out next pot and switch the mux
+    // Figure out the next pot to scan and switch the mux
+    if (Is_Expander_Present()) {
+      // Increment the slider, including expander sliders
+      ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt);
     }
     else {
-      ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt); // figure out next pot and switch the mux
+      // Increments the slider
+      ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt);
     }
   }
   delay_us(10);
-  
-	/* // Seems like a bad idea to switch the MUX in the interrupt that reads the ADCs. */
-	/* // Do it at at the end now GAM 05/04/2020 */
-	/* //If expander is connected we should scan its sliders */
 };
 
 
