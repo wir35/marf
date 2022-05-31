@@ -151,11 +151,16 @@ volatile uint8_t gSequenceReadvance_2 = 0;
 //Dip switch state
 volatile uDipConfig gDipConfig;
 
-volatile unsigned long PreviousStep = 0;
-volatile unsigned long PreviousStep_2 = 0;
+// The voltage level of the current step
+volatile unsigned int CurrentStep = 0;
+volatile unsigned int CurrentStep_2 = 0;
+
+// The voltage level of the previous step
+volatile unsigned int PreviousStep = 0;
+volatile unsigned int PreviousStep_2 = 0;
 
 volatile uint8_t pots_step[2] = {1,1};
-volatile uint8_t previous_step[2] ={1,1};
+volatile uint8_t previous_step[2] = {1,1};
 volatile unsigned int offset;
 float divider;
 
@@ -208,7 +213,6 @@ unsigned char start1 = 0;
 unsigned char stop1 = 0; 
 unsigned char start2 = 0;
 unsigned char stop2 = 0;
-unsigned char ExtClock1 =0;
 int swing1 = 0;
 int swing2 = 0;
 
@@ -604,190 +608,142 @@ void EXTI1_IRQHandler()
 	EXTI_ClearITPendingBit(EXTI_Line1);
 };
 
-
-
-void ExtClockProcessor_1() {
-
-	 gSequencerMode_1 = SEQUENCER_MODE_ADVANCE;
-	 gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-	 ExtClock1 = 1;
-		PULSE_LED_I_ALL_ON;
-
-		  if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-			PULSE_LED_I_1_ON;
-		  };
-		  if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-			PULSE_LED_I_2_ON;
-		  };
-
-	  TIM_Cmd(TIM14, ENABLE);
-	  TIM_SetCounter(TIM14, 0x00);
-	  DisplayUpdateFlags.b.MainDisplay = 1;
-	  DisplayUpdateFlags.b.StepsDisplay = 1;
-	};
-
-void ExtClockProcessor_2() {
-
-	gSequencerMode_2 = SEQUENCER_MODE_ADVANCE;
-	gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
-
-	PULSE_LED_II_ALL_ON;
-
-		if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-			PULSE_LED_II_1_ON;
-		};
-		if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-			PULSE_LED_II_2_ON;
-		};
-
-	TIM_Cmd(TIM8, ENABLE);
-	TIM_SetCounter(TIM8, 0x00);
-	DisplayUpdateFlags.b.MainDisplay = 1;
-	DisplayUpdateFlags.b.StepsDisplay = 1;
-}
-
-
 void doStart1() {
+  if (gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z
+      && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z
+      && gSequencerMode_1 != SEQUENCER_MODE_WAIT
+      && gSequencerMode_1 != SEQUENCER_MODE_RUN) {
+    // Go into run
+    gSequencerMode_1 = SEQUENCER_MODE_RUN;
+    gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+    DoStepOutputPulses1();
+  }
 
+  if (gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z) {
+    // If waiting on enable step, start running again
+    InitStart_1_SignalTimer();
+    gSequencerMode_1 = SEQUENCER_MODE_RUN;
+    gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+    DoStepOutputPulses1();
+  }
 
-	if((gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z) && (gSequencerMode_1 != SEQUENCER_MODE_WAIT) && (gSequencerMode_1 != SEQUENCER_MODE_RUN))
-	{
-		gSequencerMode_1 = SEQUENCER_MODE_RUN;
-		gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-
-		PULSE_LED_I_ALL_ON;
-			if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-				PULSE_LED_I_1_ON;
-			};
-			if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-				PULSE_LED_I_2_ON;
-			};
-
-			TIM_Cmd(TIM14, ENABLE);
-			TIM_SetCounter(TIM14, 0x00);
-}
-
-		//Code for firing pulses on step after Enabled step (Enable Mode). If signal is high, set sequencer mode to run, increment step counter, and fire pulses if set.  SB 4/24/20
-		if(gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z)
-		{
-			InitStart_1_SignalTimer();
-			gSequencerMode_1 = SEQUENCER_MODE_RUN;
-			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-
-			PULSE_LED_I_ALL_ON;
-			if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-				PULSE_LED_I_1_ON;
-			};
-			if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-				PULSE_LED_I_2_ON;
-			};
-
-			TIM_Cmd(TIM14, ENABLE);
-			TIM_SetCounter(TIM14, 0x00);
-}
-		
-			if (gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z)
-			{
-				InitStart_1_SignalTimer();
-			};
-  
+  if (gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z) {
+    InitStart_1_SignalTimer();
+  };
 }
 
 void doStart2() {
-	if((gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z) && (gSequencerMode_2 != SEQUENCER_MODE_WAIT) && (gSequencerMode_2 != SEQUENCER_MODE_RUN))
-			{
-				gSequencerMode_2 = SEQUENCER_MODE_RUN;
-				gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+  if (gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z
+      && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z
+      && gSequencerMode_2 != SEQUENCER_MODE_WAIT
+      && gSequencerMode_2 != SEQUENCER_MODE_RUN) {
+    gSequencerMode_2 = SEQUENCER_MODE_RUN;
+    gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+    DoStepOutputPulses2();
+  }
+  if(gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z) {
+    InitStart_2_SignalTimer();
+    gSequencerMode_2 = SEQUENCER_MODE_RUN;
+    gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+    DoStepOutputPulses2();
+  }
 
-				PULSE_LED_II_ALL_ON;
-										if (Steps[0][gSequenceStepNumber_2].b.OutputPulse1) {
-											PULSE_LED_II_1_ON;
-										};
-										if (Steps[0][gSequenceStepNumber_2].b.OutputPulse2) {
-											PULSE_LED_II_2_ON;
-										};
-
-										TIM_Cmd(TIM8, ENABLE);
-										TIM_SetCounter(TIM8, 0x00);
-			}
-			if(gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z)
-			{
-				InitStart_2_SignalTimer();
-				PulseStatus;
-							gSequencerMode_2 = SEQUENCER_MODE_RUN;
-							gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
-							//PulseStatus;
-
-							PULSE_LED_II_ALL_ON;
-							if (Steps[0][gSequenceStepNumber_2].b.OutputPulse1) {
-								PULSE_LED_II_1_ON;
-							};
-							if (Steps[0][gSequenceStepNumber_2].b.OutputPulse2) {
-								PULSE_LED_II_2_ON;
-							};
-
-							TIM_Cmd(TIM8, ENABLE);
-							TIM_SetCounter(TIM8, 0x00);
-			}
-
-			if(gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z)
-							{
-								InitStart_2_SignalTimer();
-							}
-
-			//EXTI_ClearITPendingBit(EXTI_Line6);
-
+  if(gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z) {
+    InitStart_2_SignalTimer();
+  }
 }
 
+void JumpToStep1(unsigned int step) {
+  unsigned int OutputVoltage = 0;
+
+  // Sample and hold current output voltage value.
+  PreviousStep = CurrentStep;
+
+  // Then update the step number to where ever we are strobing to
+  gSequenceStepNumber_1 = step;
+
+  // Reset step width
+  gStepWidth_1 = 0;
+
+  if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
+    DisplayUpdateFlags.b.MainDisplay = 1;
+    DisplayUpdateFlags.b.StepsDisplay = 1;
+  };
+
+  if (Steps[0][gSequenceStepNumber_1].b.Sloped ) {
+    // Sloped step, hold the value
+    OutputVoltage = PreviousStep;
+  } else {
+    // Stepped, immediately jump
+    OutputVoltage = GetStepVoltage(0, gSequenceStepNumber_1);
+  }
+
+  // Set DAC channel 1 to AFG1 voltage out value
+  CurrentStep = OutputVoltage;
+  DAC_SetChannel1Data(DAC_Align_12b_R, OutputVoltage);
+
+  // Set AFG1 time out value
+  MAX5135_DAC_send(EXT_DAC_CH_0, Steps[0][gSequenceStepNumber_1].b.TLevel >> 2);
+
+  // Set AFG1 reference out value
+  // (Slopes down from 1023 to 0 over the course of the step)
+  MAX5135_DAC_send(EXT_DAC_CH_1, 1023);
+
+  DoStepOutputPulses1();
+}
+
+/* Handle strobing to new stage. */
 void doStrobe1() {
-  			gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
-			
-			if ( gDisplayMode == DISPLAY_MODE_VIEW_1 ) {
-				DisplayUpdateFlags.b.MainDisplay = 1;
-				DisplayUpdateFlags.b.StepsDisplay = 1;
-			};
-			
-				PULSE_LED_I_ALL_ON;
-				
-				if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-					PULSE_LED_I_1_ON;
-				};
-				if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-					PULSE_LED_I_2_ON;
-				};	
-				
-				TIM_Cmd(TIM14, ENABLE);
-				TIM_SetCounter(TIM14, 0x00);
-
+  JumpToStep1((unsigned int) (pots_step[0] - 1));
 }
 
+/* Handle jumping to new stage. Keep in sync with 1. */
+void JumpToStep2(unsigned int step) {
+  unsigned int OutputVoltage = 0;
+
+  PreviousStep_2 = CurrentStep_2;
+  gSequenceStepNumber_2 = step;
+  gStepWidth_2 = 0;
+
+  if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
+    DisplayUpdateFlags.b.MainDisplay = 1;
+    DisplayUpdateFlags.b.StepsDisplay = 1;
+  };
+
+  if (Steps[1][gSequenceStepNumber_2].b.Sloped ) {
+    OutputVoltage = PreviousStep_2;
+  } else {
+    OutputVoltage = GetStepVoltage(1, gSequenceStepNumber_2);
+  }
+
+  CurrentStep_2 = OutputVoltage;
+  DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
+
+  MAX5135_DAC_send(EXT_DAC_CH_2, Steps[1][gSequenceStepNumber_2].b.TLevel >> 2);
+  MAX5135_DAC_send(EXT_DAC_CH_3, 1023);
+
+  DoStepOutputPulses2();
+}
+
+/* Handle strobing to new stage. Keep in sync with doStrobe1(). */
 void doStrobe2() {
-	gSequenceStepNumber_2 = (unsigned int) (pots_step[1]-1);
-			if ( gDisplayMode == DISPLAY_MODE_VIEW_2 ) {
-			DisplayUpdateFlags.b.MainDisplay = 1;
-			DisplayUpdateFlags.b.StepsDisplay = 1;
-		};
-
-					PULSE_LED_II_ALL_ON;
-
-					if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-						PULSE_LED_II_1_ON;
-					};
-					if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-						PULSE_LED_II_2_ON;
-					};
-
-					TIM_Cmd(TIM8, ENABLE);
-				TIM_SetCounter(TIM8, 0x00);
-
-
+  JumpToStep2((unsigned int) (pots_step[1]-1));
 }
 
+/* Advance by start/stop pulse. */
+void ExtClockProcessor_1() {
+  gSequencerMode_1 = SEQUENCER_MODE_ADVANCE;
+  JumpToStep1(GetNextStep(0, gSequenceStepNumber_1));
+};
 
-//START KEY-BANANA Interrupt handler
-//1 & 2 SECTION
-void EXTI9_5_IRQHandler()
-{
+/* Advance by start/stop pulse. */
+void ExtClockProcessor_2() {
+  gSequencerMode_2 = SEQUENCER_MODE_ADVANCE;
+  JumpToStep2(GetNextStep(1, gSequenceStepNumber_2));
+}
+
+/* Interrupt handler for strobe signals. */
+void EXTI9_5_IRQHandler() {
 	//1 Section
 	//1 LH
 
@@ -939,12 +895,11 @@ unsigned long int GetStepWidth(unsigned char _Section, unsigned char _StepNum)
 /*
 	Return the voltage for step number _StepNum in section _Section
 */
-	#define MAX_DAC_VALUE			0xFFF
-	#define FULL_RANGE_STEPS	60
-	#define QUANTIZE_DIVIDER	MAX_DAC_VALUE/FULL_RANGE_STEPS 
+#define MAX_DAC_VALUE			0xFFF
+#define FULL_RANGE_STEPS	60
+#define QUANTIZE_DIVIDER	MAX_DAC_VALUE/FULL_RANGE_STEPS
 	
-unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum)
-{
+unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum) {
 	unsigned int ret_val = 0;
 	unsigned int voltage_level = 0;
 	unsigned char ext_ban_num = 0;
@@ -1024,9 +979,7 @@ unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum)
 	Calculate the number of next step
 	_StepNum - current step number in section _Section
 */
-unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum)
-{
-
+unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum) {
 
 	unsigned char ret_val = 0;
 	unsigned char isLastStage = 0;
@@ -1071,418 +1024,298 @@ unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum)
 			ret_val = _StepNum+1;
 		};
 	};
-	/* ENDOF: Ã�â€¢Ã‘ï¿½Ã�Â»Ã�Â¸ Ã‘Ë†Ã�Â°Ã�Â³ Ã�Â·Ã�Â°Ã�ÂºÃ�Â¾Ã�Â½Ã‘â€¡Ã�Â¸Ã�Â»Ã‘ï¿½Ã‘ï¿½ - Ã�Â¿Ã�ÂµÃ‘â‚¬Ã�ÂµÃ‘â€¦Ã�Â¾Ã�Â´Ã�Â¸Ã�Â¼ Ã�Â½Ã�Â° Ã‘ï¿½Ã�Â»Ã�ÂµÃ�Â´Ã‘Æ’Ã‘Å½Ã‘â€°Ã�Â¸Ã�Â¹ */
 
-    //printf("GetNextStepReturnValue: %i \n", ret_val);
-    return ret_val;
+  return ret_val;
 };
 
 /*
-	Timer interrupt handler for 1 section steps
+	Timer interrupt handler for AFG1 clock.
+	Every interrupt of Timer 4 triggers new output voltages and a check if the step has ended.
 */
-void TIM4_IRQHandler()
-{
+void TIM4_IRQHandler() {
 
-	unsigned long int StepWidth_1=0;
-	float deltaVoltage;
-	unsigned long CurStep;
-	
-	
-	/* Clear interrupt flag */
+	unsigned long int StepWidth_1 = 0; // Step width = number of timer ticks
+	float deltaVoltage = 0.0;
+	unsigned long OutputVoltage = 0;
+	unsigned char doPulses = 0; // 1 if pulses should fire
+
+	// Clear interrupt flag for Timer 4
 	TIM4->SR = (uint16_t) ~TIM_IT_Update;
 
-	/* Calculate next step duration */		
+	// Calculate step duration and scaler for Timer 4.
+	// Units are kind of obscure here.
 	StepWidth_1 = GetStepWidth(0, gSequenceStepNumber_1);
-					
-					
-		/* Calculate prescaler/multiplier*/
-
-		TIM4->PSC = (uint16_t) ((((((float) AddData[ADC_TIMEMULTIPLY_Ch_1])*3.5f)/CalConstants[ADC_TIMEMULTIPLY_Ch_1])+0.5f)*STEP_TIMER_PRESCALER);
-		
-	//	TIM4->PSC = (uint16_t) ((((((float) AddData[ADC_TIMEMULTIPLY_Ch_1])*3.5f)/CalConstants[ADC_TIMEMULTIPLY_Ch_1])+0.5f)*STEP_TIMER_PRESCALER);
-
-
-		if (Steps[0][gSequenceStepNumber_1].b.Sloped) {
-			//Calculate the voltage in slope mode
-			CurStep = GetStepVoltage(0, gSequenceStepNumber_1);
-			if(gSequencerMode_1 == SEQUENCER_MODE_RUN || gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)
-			{
-				if (PreviousStep>CurStep) {
-					deltaVoltage =  (float) (PreviousStep-CurStep) / StepWidth_1;
-					DAC_SetChannel1Data(DAC_Align_12b_R, PreviousStep - (unsigned int) (deltaVoltage*gStepWidth_1) );
-				};
-				if (CurStep>PreviousStep) {
-					deltaVoltage =  (float) (CurStep-PreviousStep) / StepWidth_1;
-					DAC_SetChannel1Data(DAC_Align_12b_R, PreviousStep + (unsigned int) (deltaVoltage*gStepWidth_1) );
-				};
-			}			
-			else 
-			{
-				DAC_SetChannel1Data(DAC_Align_12b_R, GetStepVoltage(0, gSequenceStepNumber_1));
-			}
-		} else {
-			//Calculate the voltage in not slope mode
-			DAC_SetChannel1Data(DAC_Align_12b_R, GetStepVoltage(0, gSequenceStepNumber_1));
-		};
-		
-			/*additional channels - ref and time*/
-			MAX5135_DAC_send(EXT_DAC_CH_0, Steps[0][gSequenceStepNumber_1].b.TLevel >> 2);
-			MAX5135_DAC_send(EXT_DAC_CH_1, 1023 - (unsigned int) (((double) 1023/ (double) StepWidth_1)*((double) gStepWidth_1)) );
-		
-		
-		/* Increment step counter */ 
-		if ((gSequencerMode_1 == SEQUENCER_MODE_RUN)|| ((gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)))
-		{
-			gStepWidth_1++;
-		};
-
-		if ((gStepWidth_1 < StepWidth_1)) {
-		} 
-		else
-		{		
-			//Calculate next step		
-			PreviousStep = GetStepVoltage(0, gSequenceStepNumber_1);
-
-			//printf("Calc next step - input: %i \n MODE:  %d \n", gSequenceStepNumber_1, gSequencerMode_1);
-
-
-
-			if ( (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)   ) { 
-				gSequencerMode_1 =  SEQUENCER_MODE_STOP;
-			};
-						
-			if (Steps[0][gSequenceStepNumber_1].b.OpModeSTOP) {
-				gPrevSequencerMode_1 = gSequencerMode_1;
-				gSequencerMode_1 = SEQUENCER_MODE_STOP;				
-			};
+	TIM4->PSC = (uint16_t) (
+	    (((((float) AddData[ADC_TIMEMULTIPLY_Ch_1]) * 3.5f)
+	        / CalConstants[ADC_TIMEMULTIPLY_Ch_1]) + 0.5f)
+	        * STEP_TIMER_PRESCALER);
 			
-			if ((Steps[0][gSequenceStepNumber_1].b.OpModeENABLE))  {
-				if( (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) 
-				{
-				if(gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z)
-				{	
-					gPrevSequencerMode_1 = gSequencerMode_1;
-					gSequencerMode_1 = SEQUENCER_MODE_WAIT_HI_Z;
-				};
-				};
+	// Increment the step counter if the clock is running
+	// if ((gSequencerMode_1 == SEQUENCER_MODE_RUN) || ((gSequencerMode_1 == SEQUENCER_MODE_ADVANCE))) {
+	if (gStepWidth_1 < StepWidth_1) {
+	  gStepWidth_1 += 1;
+	};
 
-			};
-			if ( (Steps[0][gSequenceStepNumber_1].b.OpModeSUSTAIN)) {
-				if( (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1))
-				{
-					gPrevSequencerMode_1 = gSequencerMode_1;
-					gSequencerMode_1 = SEQUENCER_MODE_STAY_HI_Z;
-				};
-			};
-							
-			if ( (!(Steps[0][gSequenceStepNumber_1].b.OpModeSTOP)) &&
-					(!(Steps[0][gSequenceStepNumber_1].b.OpModeENABLE)) &&
-					(!(Steps[0][gSequenceStepNumber_1].b.OpModeSUSTAIN)) ) {
-			};
+	// Check if we're at the end of the step
+	if ((gStepWidth_1 >= StepWidth_1)) {
+	  // Sample and hold current step value	into PreviousStep for next step slope computation
+	  PreviousStep = CurrentStep;
 
-			// Reset step width
-			gStepWidth_1 = 0;
+	  // Reset step width
+	  gStepWidth_1 = 0;
 
-			/* Generate pulse at the end of every step */
+	  // Resolve mode change for step end
 
+	  if ((gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)) {
+	    // Stop after advance
+	    gSequencerMode_1 =  SEQUENCER_MODE_STOP;
+	  };
 
-			if (gSequencerMode_1 == SEQUENCER_MODE_RUN) {
-				gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-				//printf("RUN \n");
-						PULSE_LED_I_ALL_ON;
-				
-				if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-					PULSE_LED_I_1_ON;
-				};
-				if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-					PULSE_LED_I_2_ON;
-				};	
+	  if (Steps[0][gSequenceStepNumber_1].b.OpModeSTOP) {
+	    // Stop step
+	    gPrevSequencerMode_1 = gSequencerMode_1;
+	    gSequencerMode_1 = SEQUENCER_MODE_STOP;
+	  };
 
-				TIM_Cmd(TIM14, ENABLE);
-				TIM_SetCounter(TIM14, 0x00);
+	  if (Steps[0][gSequenceStepNumber_1].b.OpModeENABLE
+	      && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z)  {
+	    // Enable step, check start banana
+	    if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) {
+	      // Go into enable mode
+	      gPrevSequencerMode_1 = gSequencerMode_1;
+	      gSequencerMode_1 = SEQUENCER_MODE_WAIT_HI_Z;
+	    };
+	  };
 
+	  if (Steps[0][gSequenceStepNumber_1].b.OpModeSUSTAIN
+	      && gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z) {
+	    // Sustain step, check start banana
+	    if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1)) {
+	      // Go into sustain mode
+	      gPrevSequencerMode_1 = gSequencerMode_1;
+	      gSequencerMode_1 = SEQUENCER_MODE_STAY_HI_Z;
+	      InitStart_1_SignalTimer();
+	    };
+	  };
 
-			};
+	  if (gSequencerMode_1 == SEQUENCER_MODE_RUN) {
+	    // Advance to the next step
+	    gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+	    doPulses = 1;
+	  };
 
-		if (gSequencerMode_1 == SEQUENCER_MODE_STOP) {
+	  if (gSequencerMode_1 == SEQUENCER_MODE_STOP && swing1) {
+	    // Fire pulses again at end of step if "swing" is on
+	    doPulses = 1;
+	  }
 
-			//gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-
-			if(gPrevSequencerMode_1 == SEQUENCER_MODE_RUN)
-			{
-
-			}
-
-			if (!swing1){
-
-				return;
-			}
-
-			else
-			{
-
-						PULSE_LED_I_ALL_ON;
-
-						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-							PULSE_LED_I_1_ON;
-						};
-						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-							PULSE_LED_I_2_ON;
-						};
+	  if (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE) {
+	    // Advance to the next step
+	    gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+	    doPulses = 1;
+	  };
+	};
 
 
-
-						TIM_Cmd(TIM14, ENABLE);
-						TIM_SetCounter(TIM14, 0x00);
-					};
-		}
-
-		if (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE) {
-			gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-
-						PULSE_LED_I_ALL_ON;
-
-						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-							PULSE_LED_I_1_ON;
-						};
-						if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-							PULSE_LED_I_2_ON;
-						};
-
-						TIM_Cmd(TIM14, ENABLE);
-						TIM_SetCounter(TIM14, 0x00);
-					};
-		};
-	
-	if (gSequencerMode_1 == SEQUENCER_MODE_WAIT) {
-		if(gSequenceStepNumber_1 != (unsigned int) (pots_step[0]-1))
-		{
-			gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1); 
-			DAC_SetChannel1Data(DAC_Align_12b_R, GetStepVoltage(0, gSequenceStepNumber_1));
-			
-			PULSE_LED_I_ALL_ON;
-			
-			if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-				PULSE_LED_I_1_ON;
-			};
-			if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-				PULSE_LED_I_2_ON;
-			};	
-						
-			TIM_Cmd(TIM14, ENABLE);
-			TIM_SetCounter(TIM14, 0x00);
-		}
+  if (gSequencerMode_1 == SEQUENCER_MODE_WAIT) {
+	  // Continuous step address mode. Check if the step has changed.
+	  if (gSequenceStepNumber_1 != (unsigned int) (pots_step[0] - 1)) {
+	    // Sample and hold current voltage output value
+	    PreviousStep = CurrentStep;
+	    gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
+	    // Reset step width
+	    gStepWidth_1 = 0;
+	    doPulses = 1;
+	  }
 	};	
 
 	if (gSequencerMode_1 == SEQUENCER_MODE_WAIT_STROBE) {
-
-			gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1); //(float) AddData[6]/(float) (CalConstants[6]/15.0)
-			DAC_SetChannel1Data(DAC_Align_12b_R, GetStepVoltage(0, gSequenceStepNumber_1));
-		gSequencerMode_1 = gPrevSequencerMode_1;
+	  // What does this do?
+    gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
+	  gSequencerMode_1 = gPrevSequencerMode_1;
 	}
-		
-	if ( gDisplayMode == DISPLAY_MODE_VIEW_1 ) {
-		DisplayUpdateFlags.b.MainDisplay = 1;
-		DisplayUpdateFlags.b.StepsDisplay = 1;
-	};		
-	
-		return;
+
+	if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
+	  DisplayUpdateFlags.b.MainDisplay = 1;
+	  DisplayUpdateFlags.b.StepsDisplay = 1;
+	};
+
+	// Now set output voltages
+	// Compute the current step's programmed voltage output
+	OutputVoltage = GetStepVoltage(0, gSequenceStepNumber_1);
+
+	// If the step is sloped, then slope from PreviousStep to the new output value
+	if (Steps[0][gSequenceStepNumber_1].b.Sloped ) {
+	  if (PreviousStep >= OutputVoltage) {
+	    // Slope down
+	    deltaVoltage = (float) (PreviousStep - OutputVoltage) / StepWidth_1;
+	    OutputVoltage = PreviousStep - (unsigned int) (deltaVoltage * gStepWidth_1);
+	  } else if (OutputVoltage > PreviousStep) {
+	    // Slope up
+	    deltaVoltage =  (float) (OutputVoltage - PreviousStep) / StepWidth_1;
+	    OutputVoltage = PreviousStep + (unsigned int) (deltaVoltage * gStepWidth_1);
+	  }
+	}
+
+	// Set DAC channel 1 to AFG1 voltage out value
+	CurrentStep = OutputVoltage;
+	DAC_SetChannel1Data(DAC_Align_12b_R, OutputVoltage);
+
+	// Set AFG1 time out value
+	MAX5135_DAC_send(EXT_DAC_CH_0, Steps[0][gSequenceStepNumber_1].b.TLevel >> 2);
+
+	// Set AFG1 reference out value
+	// (Slopes down from 1023 to 0 over the course of the step)
+	MAX5135_DAC_send(EXT_DAC_CH_1,
+	    1023 - (unsigned int) ((1023.0 / (float) StepWidth_1) * ((float) gStepWidth_1)));
+
+	// Now that output voltages are set, pulses can fire now
+	if (doPulses) DoStepOutputPulses1();
 };
 
 /*
- Timer interrupt handler for 1 section steps
+  Timer interrupt handler for AFG2 clock.
+  Keep in sync with TIM4_IRQHandler().
 */
-void TIM5_IRQHandler()
-{
-	unsigned long int StepWidth_2=0;	
-	float deltaVoltage;
-	unsigned long CurStep;
+void TIM5_IRQHandler() {
 
-	/* Clear interrupt flag */
-	TIM5->SR = (uint16_t) ~TIM_IT_Update;
-	
-	/* Calculate next step duration */	
-	
-		/* Calculate next step duration */
-		StepWidth_2 = GetStepWidth(1, gSequenceStepNumber_2);
+  unsigned long int StepWidth_2 = 0;
+  float deltaVoltage = 0.0;
+  unsigned long OutputVoltage = 0;
+  unsigned char doPulses = 0;
 
-		/* Calculate prescaler/multiplier*/
-		TIM5->PSC = (uint16_t) (((((AddData[ADC_TIMEMULTIPLY_Ch_2])*3.5)/CalConstants[ADC_TIMEMULTIPLY_Ch_2])+0.5)*STEP_TIMER_PRESCALER);
-		
-		if (Steps[1][gSequenceStepNumber_2].b.Sloped) {
-			//Calculate the voltage in slope mode
-			CurStep = GetStepVoltage(1, gSequenceStepNumber_2);
-			if(gSequencerMode_2 == SEQUENCER_MODE_RUN || gSequencerMode_2 == SEQUENCER_MODE_ADVANCE)
-			{
-				if (PreviousStep_2>CurStep) {
-					deltaVoltage =  (float) (PreviousStep_2-CurStep) / StepWidth_2;
-					DAC_SetChannel2Data(DAC_Align_12b_R, PreviousStep_2 - (unsigned int) (deltaVoltage*gStepWidth_2) );
-				};
-				if (CurStep>PreviousStep_2) {
-					deltaVoltage =  (float) (CurStep-PreviousStep_2) / StepWidth_2;
-					DAC_SetChannel2Data(DAC_Align_12b_R, PreviousStep_2 + (unsigned int) (deltaVoltage*gStepWidth_2) );
-				};	
-			}
-			else
-			{
-				DAC_SetChannel2Data(DAC_Align_12b_R, GetStepVoltage(1, gSequenceStepNumber_2));
-			}
-			
-		} else {
-			//Calculate the voltage in not slope mode
-			DAC_SetChannel2Data(DAC_Align_12b_R, GetStepVoltage(1, gSequenceStepNumber_2));
-		};
+  StepWidth_2 = GetStepWidth(1, gSequenceStepNumber_2);
+  TIM5->PSC = (uint16_t) (
+      ((((AddData[ADC_TIMEMULTIPLY_Ch_2])*3.5)
+          / CalConstants[ADC_TIMEMULTIPLY_Ch_2])+0.5)
+          * STEP_TIMER_PRESCALER);
 
-			MAX5135_DAC_send(EXT_DAC_CH_2, Steps[1][gSequenceStepNumber_2].b.TLevel >> 2);
-			MAX5135_DAC_send(EXT_DAC_CH_3, 0x3FF - (unsigned int) (((double) 0x3FF/ (double) StepWidth_2)*((double) gStepWidth_2)) );
+  if (gStepWidth_2 < StepWidth_2) {
+    gStepWidth_2 += 1;
+  };
 
-	/* Increment step counter */
-		if ((gSequencerMode_2 == SEQUENCER_MODE_RUN ) || ((gSequencerMode_2 == SEQUENCER_MODE_ADVANCE)))
-		{
-			gStepWidth_2++;
-		};
+  if ((gStepWidth_2 >= StepWidth_2)) {
+    PreviousStep_2 = CurrentStep_2;
+    gStepWidth_2 = 0;
 
-		if ((gStepWidth_2 < StepWidth_2)) {
-		} else {
-			PreviousStep_2 = GetStepVoltage(1, gSequenceStepNumber_2);	
+    if ((gSequencerMode_2 == SEQUENCER_MODE_ADVANCE)) {
+      gSequencerMode_2 =  SEQUENCER_MODE_STOP;
+    };
+    if (Steps[1][gSequenceStepNumber_2].b.OpModeSTOP) {
+      gPrevSequencerMode_2 = gSequencerMode_2;
+      gSequencerMode_2 = SEQUENCER_MODE_STOP;
+    };
 
-			//Calculate next step		
-			if((gSequencerMode_2 == SEQUENCER_MODE_ADVANCE)) { 
-				gSequencerMode_2 = SEQUENCER_MODE_STOP;
-			};
-			
-			if (Steps[1][gSequenceStepNumber_2].b.OpModeSTOP) {
-				gPrevSequencerMode_2 = gSequencerMode_2;
-				gSequencerMode_2 = SEQUENCER_MODE_STOP;				
-			};
-			
-			if ( (Steps[1][gSequenceStepNumber_2].b.OpModeENABLE))  {
-				if( (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0)) 
-				{
-					if(gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z)
-					{	
-						gPrevSequencerMode_2 = gSequencerMode_2;
-						gSequencerMode_2 = SEQUENCER_MODE_WAIT_HI_Z;
-					};
-				};
-		};
-				
-			if ( (Steps[1][gSequenceStepNumber_2].b.OpModeSUSTAIN)) {
-				if( (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1)) 
-				{
-					if(gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z)
-					{	
-						gPrevSequencerMode_2 = gSequencerMode_2;
-						gSequencerMode_2 = SEQUENCER_MODE_STAY_HI_Z;
-						InitStart_2_SignalTimer();
-					}
-				}
-			};
-				
-			if ( (!(Steps[1][gSequenceStepNumber_2].b.OpModeSTOP)) &&
-					(!(Steps[1][gSequenceStepNumber_2].b.OpModeENABLE)) &&
-					(!(Steps[1][gSequenceStepNumber_2].b.OpModeSUSTAIN)) ) {
-			};
+    if (Steps[1][gSequenceStepNumber_2].b.OpModeENABLE
+        && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z) {
+      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0)) {
+        gPrevSequencerMode_2 = gSequencerMode_2;
+        gSequencerMode_2 = SEQUENCER_MODE_WAIT_HI_Z;
+      };
+    };
 
-			gStepWidth_2 = 0;
+    if ((Steps[1][gSequenceStepNumber_2].b.OpModeSUSTAIN
+        && gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z)) {
+      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1)) {
+        gPrevSequencerMode_2 = gSequencerMode_2;
+        gSequencerMode_2 = SEQUENCER_MODE_STAY_HI_Z;
+        InitStart_2_SignalTimer();
+      }
+    };
 
-			/* Generate pulse at the end of every step */
-			if (gSequencerMode_2 == SEQUENCER_MODE_RUN) {
-					gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
-				
-				PULSE_LED_II_ALL_ON;
-				
-				if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-					PULSE_LED_II_1_ON;
-				};
-				if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-					PULSE_LED_II_2_ON;
-				};	
-				
-				TIM_Cmd(TIM8, ENABLE);
-				TIM_SetCounter(TIM8, 0x00);
-			};
+    if (gSequencerMode_2 == SEQUENCER_MODE_RUN) {
+      gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+      doPulses = 1;
+    };
 
-			if (gSequencerMode_2 == SEQUENCER_MODE_STOP) {
+    if (gSequencerMode_2 == SEQUENCER_MODE_STOP && swing2) {
+      doPulses = 1;
+    }
 
-				if(gPrevSequencerMode_2 == SEQUENCER_MODE_RUN)
-							{
+    if (gSequencerMode_2 == SEQUENCER_MODE_ADVANCE) {
+      // Advance to the next step
+      gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+      doPulses = 1;
+    };
+  }
 
-							}
+  if (gSequencerMode_2 == SEQUENCER_MODE_WAIT) {
+    if (gSequenceStepNumber_2 != (unsigned int) (pots_step[1] - 1)) {
+      // Sample and hold current voltage output value
+      PreviousStep_2 = CurrentStep_2;
+      gSequenceStepNumber_2 = (unsigned int) (pots_step[1]-1);
+      // Reset step width
+      gStepWidth_2 = 0;
+      doPulses = 1;
+    }
+  };
 
-							if (!swing2){
-								return;
-							}
+  if (gSequencerMode_2 == SEQUENCER_MODE_WAIT_STROBE) {
+    // What does this do?
+    gSequenceStepNumber_2 = (unsigned int) (pots_step[1]-1);
+    gSequencerMode_2 = gPrevSequencerMode_2;
+  }
 
-							else
-							{
-							PULSE_LED_II_ALL_ON;
+  if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
+    DisplayUpdateFlags.b.MainDisplay = 1;
+    DisplayUpdateFlags.b.StepsDisplay = 1;
+  };
 
-							if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-								PULSE_LED_II_1_ON;
-							};
-							if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-								PULSE_LED_II_2_ON;
-							};
+  OutputVoltage = GetStepVoltage(1, gSequenceStepNumber_2);
 
-							TIM_Cmd(TIM8, ENABLE);
-							TIM_SetCounter(TIM8, 0x00);
-			};
-		};
+  if (Steps[1][gSequenceStepNumber_2].b.Sloped ) {
+    if (PreviousStep_2 >= OutputVoltage) {
+      deltaVoltage = (float) (PreviousStep_2 - OutputVoltage) / StepWidth_2;
+      OutputVoltage = PreviousStep_2 - (unsigned int) (deltaVoltage * gStepWidth_2);
+    } else if (OutputVoltage > PreviousStep_2) {
+      // Slope up
+      deltaVoltage =  (float) (OutputVoltage - PreviousStep_2) / StepWidth_2;
+      OutputVoltage = PreviousStep_2 + (unsigned int) (deltaVoltage * gStepWidth_2);
+    }
+  }
 
-			if (gSequencerMode_2 == SEQUENCER_MODE_ADVANCE) {
-							gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+  CurrentStep_2 = OutputVoltage;
+  DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
 
-										PULSE_LED_II_ALL_ON;
+  MAX5135_DAC_send(EXT_DAC_CH_2, Steps[1][gSequenceStepNumber_2].b.TLevel >> 2);
+  MAX5135_DAC_send(EXT_DAC_CH_3,
+      1023 - (unsigned int) (((float) 0x3FF/ (float) StepWidth_2) * ((float) gStepWidth_2)));
 
-										if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-											PULSE_LED_II_1_ON;
-										};
-										if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-											PULSE_LED_II_2_ON;
-										};
+  // Now that output voltages are set, pulses can fire now
+  if (doPulses) DoStepOutputPulses2();
 
-										TIM_Cmd(TIM8, ENABLE);
-										TIM_SetCounter(TIM8, 0x00);
-						};
-
-		}
-
-	if (gSequencerMode_2 == SEQUENCER_MODE_WAIT) {
-		if(gSequenceStepNumber_2 != (unsigned int)(pots_step[1]-1))
-		{
-			gSequenceStepNumber_2 = (unsigned int)(pots_step[1]-1);
-			DAC_SetChannel2Data(DAC_Align_12b_R, GetStepVoltage(1, gSequenceStepNumber_2));
-			
-			PULSE_LED_II_ALL_ON;
-
-			if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-				PULSE_LED_II_1_ON;
-			};
-			if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-				PULSE_LED_II_2_ON;
-			};	
-
-			TIM_Cmd(TIM8, ENABLE);
-			TIM_SetCounter(TIM8, 0x00);
-		}
-	};	
-	
-		if (gSequencerMode_2 == SEQUENCER_MODE_WAIT_STROBE) {
-
-			gSequenceStepNumber_2 = (unsigned int)(pots_step[1]-1);
-			DAC_SetChannel2Data(DAC_Align_12b_R, GetStepVoltage(1, gSequenceStepNumber_2));
-
-		gSequencerMode_2 = gPrevSequencerMode_2;
-	}
-	
-	
-	if ( gDisplayMode == DISPLAY_MODE_VIEW_2 ) {
-		DisplayUpdateFlags.b.MainDisplay = 1;
-		DisplayUpdateFlags.b.StepsDisplay = 1;
-	};	
-		return;
+  // Clear interrupt flag for Timer 5
+  TIM5->SR = (uint16_t) ~TIM_IT_Update;
 };
+
+
+void DoStepOutputPulses1() {
+  PULSE_LED_I_ALL_ON;
+
+  if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
+    PULSE_LED_I_1_ON;
+  };
+  if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
+    PULSE_LED_I_2_ON;
+  };
+
+  TIM_Cmd(TIM14, ENABLE);
+  TIM_SetCounter(TIM14, 0x00);
+}
+
+void DoStepOutputPulses2() {
+  PULSE_LED_II_ALL_ON;
+
+  if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
+    PULSE_LED_II_1_ON;
+  };
+  if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
+    PULSE_LED_II_2_ON;
+  };
+
+  TIM_Cmd(TIM8, ENABLE);
+  TIM_SetCounter(TIM8, 0x00);
+}
 
 
 /*
