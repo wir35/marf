@@ -161,10 +161,15 @@ volatile unsigned int PreviousStep_2 = 0;
 
 volatile uint8_t pots_step[2] = {1,1};
 volatile uint8_t previous_step[2] = {1,1};
-volatile unsigned int offset;
-float divider;
 
-//Variables for adc scan
+// Precomputed magic numbers for voltage scaling
+// In the context of 12 bit range / 0.0 - 4095.0
+float limited_range_multiplier; // octaves per 10v range
+float octave_offset; // span of 1 octave
+float semitone_offset; // span of 1 semitone
+float quantizer_magic; // reciprocal of semitone_offset
+
+// Variables for adc scan
 #define NUMS 10
 volatile uint16_t average_array[2][32][NUMS];
 volatile uint16_t average_index[2][32];
@@ -187,7 +192,7 @@ unsigned char rev;
 
 unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum);
 	
-//Current patches bank
+// Current patches bank
 volatile unsigned char bank = 1;
 volatile unsigned char strobe_banana_flag1 = 0, strobe_banana_flag2 = 0;
 volatile unsigned int save_counter = 0, load_counter = 0;
@@ -899,80 +904,55 @@ unsigned long int GetStepWidth(unsigned char _Section, unsigned char _StepNum)
 #define FULL_RANGE_STEPS	60
 #define QUANTIZE_DIVIDER	MAX_DAC_VALUE/FULL_RANGE_STEPS
 	
+// Calibration scalers for external inputs, precomputed in setup
+float external_cal[8] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+
 unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum) {
-	unsigned int ret_val = 0;
-	unsigned int voltage_level = 0;
+
+	float voltage_level = 0.0; // stay in floating point throughout!
 	unsigned char ext_ban_num = 0;
 
 	if (Steps[_Section][_StepNum].b.VoltageSource) {
-		//Step voltage is set externally
-	  ext_ban_num = (Steps[_Section][_StepNum].b.VLevel + EXT_VOLTAGE_STEP_OFFSET)/EXT_VOLTAGE_STEP_SELECT;
-		if(ext_ban_num > 3) ext_ban_num = 3;
-		
-		voltage_level = AddData[ext_ban_num]*(4095.0f/((float)CalConstants[ext_ban_num]));
+		// Step voltage is set externally
+	  ext_ban_num = (Steps[_Section][_StepNum].b.VLevel
+	      + EXT_VOLTAGE_STEP_OFFSET)/EXT_VOLTAGE_STEP_SELECT;
+		if (ext_ban_num > 3) ext_ban_num = 3;
+		voltage_level = (float) AddData[ext_ban_num] * external_cal[ext_ban_num];
 	} else {
-		//Step voltage is set on panel
+		// Step voltage is set by slider
 		voltage_level = Steps[_Section][_StepNum].b.VLevel;
 	};
 	
-	if(voltage_level > 4095) voltage_level = 4095;
+	// Clamp if smoothing or something has gone awry
+	if (voltage_level > 4095.0) {
+	  voltage_level = 4095.0;
+	} else if (voltage_level < 0.0) {
+	  voltage_level = 0.0;
+	}
 
-	if (Steps[_Section][_StepNum].b.FullRange) {		
-		ret_val = voltage_level;
-		// if quantization mode is on
-		if (Steps[_Section][_StepNum].b.Quantize) {
-		//Calculate the quantized voltage
-			ret_val =  (ret_val / (12*divider)) ;
-			ret_val = ret_val * (12*divider);
-		};
-	};
-	
-	if (Steps[_Section][_StepNum].b.Voltage0) {	
-		ret_val = (voltage_level/divider);
-		if (Steps[_Section][_StepNum].b.Quantize) {
+	if (!Steps[_Section][_StepNum].b.FullRange) {
+	  // Scale voltage for limited range
+	  voltage_level *= limited_range_multiplier;
+	  if (Steps[_Section][_StepNum].b.Voltage2) {
+	    voltage_level += octave_offset;
+	  } else if (Steps[_Section][_StepNum].b.Voltage4) {
+	    voltage_level += octave_offset * 2;
+	  } else if (Steps[_Section][_StepNum].b.Voltage6) {
+	    voltage_level += octave_offset * 3;
+	  } else if (Steps[_Section][_StepNum].b.Voltage8) {
+	    voltage_level += octave_offset * 4;
+	  }
+	}
 
-			ret_val =  (ret_val / (offset/12)) ;
-			ret_val = ret_val * (offset/12);
-		};
-	};
-	
-	if (Steps[_Section][_StepNum].b.Voltage2) {		
-		ret_val = (voltage_level/divider);
-		if (Steps[_Section][_StepNum].b.Quantize) {
-			ret_val =  (ret_val / (offset/12)) ;
-			ret_val = ret_val * (offset/12);
-		};
-		ret_val +=offset;
-	};
-	
-	if (Steps[_Section][_StepNum].b.Voltage4) {		
-		ret_val = (voltage_level/divider);
-		if (Steps[_Section][_StepNum].b.Quantize) {
-			ret_val =  (ret_val / (offset/12)) ;
-			ret_val = ret_val * (offset/12);
-		};
-		ret_val +=offset*2;
-	};
-	
-	if (Steps[_Section][_StepNum].b.Voltage6) {		
-		ret_val = (voltage_level/divider);
-		if (Steps[_Section][_StepNum].b.Quantize) {
-			ret_val =  (ret_val / (offset/12)) ;
-			ret_val = ret_val * (offset/12);
-		};
-		ret_val +=offset*3;
-	};
-	
-	if (Steps[_Section][_StepNum].b.Voltage8) {		
-		ret_val = (voltage_level/divider);
-		if (Steps[_Section][_StepNum].b.Quantize) {
-			ret_val =  (ret_val / (offset/12)) ;
-			ret_val = ret_val * (offset/12);
-		};
-		ret_val +=offset*4;
-	};
+	if (Steps[_Section][_StepNum].b.Quantize) {
+	  // Quantize the output to semitones.
+	  // Use the precomputed magic values to avoid float divisions
+	  voltage_level += 0.5 * semitone_offset;
+	  voltage_level = (float) ((int) (voltage_level * quantizer_magic));
+	  voltage_level *= semitone_offset;
+	}
 
-	return ret_val;
+	return (unsigned int) voltage_level + 0.5;
 };
 
 /*
@@ -1050,8 +1030,6 @@ void TIM4_IRQHandler() {
 	        / CalConstants[ADC_TIMEMULTIPLY_Ch_1]) + 0.5f)
 	        * STEP_TIMER_PRESCALER);
 			
-	// Increment the step counter if the clock is running
-	// if ((gSequencerMode_1 == SEQUENCER_MODE_RUN) || ((gSequencerMode_1 == SEQUENCER_MODE_ADVANCE))) {
 	if (gStepWidth_1 < StepWidth_1) {
 	  gStepWidth_1 += 1;
 	};
@@ -1165,9 +1143,14 @@ void TIM4_IRQHandler() {
 	MAX5135_DAC_send(EXT_DAC_CH_0, Steps[0][gSequenceStepNumber_1].b.TLevel >> 2);
 
 	// Set AFG1 reference out value
-	// (Slopes down from 1023 to 0 over the course of the step)
-	MAX5135_DAC_send(EXT_DAC_CH_1,
-	    1023 - (unsigned int) ((1023.0 / (float) StepWidth_1) * ((float) gStepWidth_1)));
+	if (gSequencerMode_1 == SEQUENCER_MODE_RUN) {
+	  // (Slopes down from 1023 to 0 over the course of the step)
+	  MAX5135_DAC_send(EXT_DAC_CH_1,
+	      1023 - (unsigned int) ((1023.0 / (float) StepWidth_1) * ((float) gStepWidth_1)));
+	} else {
+	  // No reference output when not running
+	  MAX5135_DAC_send(EXT_DAC_CH_1, 0);
+	}
 
 	// Now that output voltages are set, pulses can fire now
 	if (doPulses) DoStepOutputPulses1();
@@ -1278,8 +1261,13 @@ void TIM5_IRQHandler() {
   DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
 
   MAX5135_DAC_send(EXT_DAC_CH_2, Steps[1][gSequenceStepNumber_2].b.TLevel >> 2);
-  MAX5135_DAC_send(EXT_DAC_CH_3,
-      1023 - (unsigned int) (((float) 0x3FF/ (float) StepWidth_2) * ((float) gStepWidth_2)));
+
+  if (gSequencerMode_2 == SEQUENCER_MODE_RUN) {
+    MAX5135_DAC_send(EXT_DAC_CH_3,
+        1023 - (unsigned int) (((float) 0x3FF/ (float) StepWidth_2) * ((float) gStepWidth_2)));
+  } else {
+    MAX5135_DAC_send(EXT_DAC_CH_3, 0);
+  }
 
   // Now that output voltages are set, pulses can fire now
   if (doPulses) DoStepOutputPulses2();
@@ -2957,35 +2945,37 @@ int main(void)
 	  }
 	else 
 	{
-		//if not restore calibration constants from memory
+		// if not restore calibration constants from memory
 		CAT25512_read_block(100*sizeof(Steps), (unsigned char *) CalConstants, sizeof(CalConstants));
-		for(i = 0; i < 8; i++)
-		{
-			if(CalConstants[i] < 100) CalConstants[i] = 4095;
+		for(i = 0; i < 8; i++) {
+			if (CalConstants[i] < 100) CalConstants[i] = 4095;
+			external_cal[i] = 4095.0 / (float) CalConstants[i];
 		}
+
 		swapped_pulses = CAT25512_ReadByte(100*sizeof(Steps)+sizeof(CalConstants));
 	}
 
-	while(1) {		
-		//gDipConfig = GetDipConfig();
-		//Set offset and divider which depend on dip switch state
-		if(gDipConfig.b.V_OUT_1V == 1) 
-		{
-			offset = (4095.0/10.0);
-			divider = 10.0;
-		}
-		else
-		{
-			if(gDipConfig.b.V_OUT_1V2 == 1)
-			{
-				offset = (4095.0/8.29);
-				divider = 8.29;
-			}
-			else
-			{
-				offset = (4095.0/5.0);
-				divider = 5.0;
-			}
+	while (1) {
+
+		// Set magic numbers from dip switch state
+	  if (gDipConfig.b.V_OUT_1V) {
+			// 1v per octave, who dis?
+	    octave_offset = 409.5;
+	    semitone_offset = 34.125;
+	    quantizer_magic = 0.0293;
+			limited_range_multiplier = 0.1;
+		} else if (gDipConfig.b.V_OUT_1V2) {
+		  // 1.2v per octave, the one true way
+			octave_offset = 491.4;
+			semitone_offset = 40.95;
+			quantizer_magic = 0.02442;
+			limited_range_multiplier = 0.12;
+		} else {
+		  // 2v per octave for the OG's
+			octave_offset = 819.0;
+			semitone_offset = 68.25;
+			quantizer_magic = 0.01465;
+			limited_range_multiplier = 0.2;
 		}
 
 		/* keys proceed */
