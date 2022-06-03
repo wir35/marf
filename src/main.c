@@ -234,106 +234,18 @@ void systickInit(uint16_t frequency) {
    millis++; 
  }
 
+void writeVoltageSlider() {
 
-//ADC interrupt handler
-void ADC_IRQHandler()
-{
-  unsigned char NeedInc = 0;
-  unsigned char pottype;
-  unsigned char stage;
-  uint16_t delta = 0;
+}
 
-  // what stage are we reading?
-  if (ADC_POT_sel_cnt < 16) {
-    pottype = POT_TYPE_VOLTAGE;
-    stage = ADC_POT_sel_cnt; 
-  }
-  else if (ADC_POT_sel_cnt < 24) {
-    pottype = POT_TYPE_OTHER;
-    stage = ADC_POT_sel_cnt-16; 
-  }
-  else if (ADC_POT_sel_cnt < 40) {
-    pottype = POT_TYPE_TIME;
-    stage=ADC_POT_sel_cnt - 24; 
-  }
-  else if (ADC_POT_sel_cnt < 56) {
-    pottype = POT_TYPE_VOLTAGE;
-    stage = ADC_POT_sel_cnt - 24; 
-  }
-  else {
-    pottype=POT_TYPE_TIME;
-    stage = ADC_POT_sel_cnt - 40; 
-  }
+void writeTimeSlider() {
 
-  // do we have an ADC value? if so fetch it
-  if (pottype == POT_TYPE_OTHER) {  // external voltages, time multiplier or stage select pot
-    	if ( ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET) {
-    	  adcreading = (uint16_t) ADC2->DR & 0xfff;
-    	  NeedInc = 1;
-    	}
-  }
-  else { // sliders
-    if ( ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
-      adcreading = (uint16_t) ADC1->DR & 0xfff;
-      adcreading =scale(adcreading); // trim and scale slider readings
-      NeedInc = 1;
-    }
-  }
+}
 
-  // process the ADC reading
-  if (NeedInc) {
-    switch (pottype) {
+void writeOtherPot() {
+  /*
 
-    case POT_TYPE_VOLTAGE:
-      voltages_lp[stage] += (adcreading - voltages_lp[stage])>>4;
-      for (int j=0; j<2; j++) {
-        if (Steps[j][stage].b.WaitVoltageSlider) {
-          // stuck on a preset; shall we unstick?
-          if (adcreading>>4 == Steps[j][stage].b.VLevel >>4) {
-            Steps[j][stage].b.WaitVoltageSlider=0;
-          }
-        } else {
-          // store the filtered value
-          if (adcreading - Steps[j][stage].b.VLevel > JUMP_THRESHOLD) {
-            // big jumps happen immediately
-            Steps[j][stage].b.VLevel = adcreading-30;
-            voltages_lp[stage]=adcreading-15;
-          } else if (Steps[j][stage].b.VLevel - adcreading > JUMP_THRESHOLD) {
-            Steps[j][stage].b.VLevel = adcreading;
-            voltages_lp[stage]=adcreading;
-          } else {
-            Steps[j][stage].b.VLevel += (voltages_lp[stage] - Steps[j][stage].b.VLevel) >> 4;
-          }
-        }
-      }
-      break;
-
-    case POT_TYPE_TIME:
-      times_lp[stage] += (adcreading - times_lp[stage])>>4;
-      for (int j=0; j<2; j++) {
-        if (Steps[j][stage].b.WaitTimeSlider) {
-          if (adcreading>>4 == Steps[j][stage].b.TLevel >>4) {
-            Steps[j][stage].b.WaitTimeSlider=0;
-          }
-        } else {
-          // store the filtered value
-          if (adcreading - Steps[j][stage].b.TLevel > JUMP_THRESHOLD) {
-            // big jumps happen immediately
-            Steps[j][stage].b.TLevel = adcreading-30;
-            times_lp[stage]=adcreading-15;
-          } else if (Steps[j][stage].b.TLevel - adcreading > JUMP_THRESHOLD) {
-            Steps[j][stage].b.TLevel = adcreading;
-            times_lp[stage]=adcreading;
-          } else {
-            Steps[j][stage].b.TLevel += (times_lp[stage] - Steps[j][stage].b.TLevel) >> 4;
-          }
-        }
-      }
-      break;
-
-    case POT_TYPE_OTHER:
-
-      if (adcreading >= AddData[stage]) {
+   if (adcreading >= AddData[stage]) {
         delta = adcreading - AddData[stage];
       } else {
         delta = AddData[stage] - adcreading;
@@ -352,26 +264,129 @@ void ADC_IRQHandler()
         // No filtering
         AddData[stage] = adcreading;
       }
-      break; 
-    }
 
-    // Reading ADC's done
+   */
 
-    ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
-    ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
+}
 
-    // Figure out the next pot to scan and switch the mux
-    if (Is_Expander_Present()) {
-      // Increment the slider, including expander sliders
-      ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt);
-    }
-    else {
-      // Increments the slider
-      ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt);
+// Voltage smoothers are low pass filters that keep intermediate 16 bit state from smoothed 12 bit readings.
+// The filtering increases as the readings converge mainly to reduce jitter noise.
+
+// Applies the voltage smoother to the state var passed.
+// The new_reading should already be shifted to a 16 bit value.
+// The returned value is shifted back down to 12 bit range.
+inline static uint16_t apply_voltage_smoother(uint16_t new_reading, volatile uint16_t *state) {
+  register uint16_t delta;
+
+  if (new_reading > *state) {
+    delta = new_reading - *state;
+  } else {
+    delta = *state - new_reading;
+  }
+  if (delta < 512) {
+    // Apply a lot of filtering when the reading is close
+    *state += (new_reading - *state) >> 3;
+  } else if (delta < 1024) {
+    // Less filtering
+    *state += (new_reading - *state) >> 2;
+  } else if (delta < 2048) {
+    // Less filtering
+    *state += (new_reading - *state) >> 1;
+  } else {
+    // No filtering
+    *state = new_reading;
+  }
+  return *state >> 4;
+}
+
+void WriteVoltageSlider(uint8_t slider_num, uint32_t new_adc_reading) {
+  static volatile uint16_t voltage_smoothers[32];
+
+  uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff);
+  uint16_t smoothed = apply_voltage_smoother(adc_reading << 4, &voltage_smoothers[slider_num]);
+
+  for (uint8_t j = 0; j < 2; j++) {
+    if (Steps[j][slider_num].b.WaitVoltageSlider) {
+      if (smoothed >> 4 == Steps[j][slider_num].b.VLevel >> 4) {
+        // Unpin the slider
+        Steps[j][slider_num].b.WaitVoltageSlider = 0;
+        Steps[j][slider_num].b.VLevel = smoothed;
+      }
+    } else {
+      Steps[j][slider_num].b.VLevel = smoothed;
     }
   }
+}
+
+void WriteTimeSlider(uint8_t slider_num, uint32_t new_adc_reading) {
+  static volatile uint16_t voltage_smoothers[32];
+
+  uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff) << 4;
+  uint16_t smoothed = apply_voltage_smoother(adc_reading, &voltage_smoothers[slider_num]);
+
+  for (uint8_t j = 0; j < 2; j++) {
+    if (Steps[j][slider_num].b.WaitTimeSlider) {
+      if (smoothed >> 4 == Steps[j][slider_num].b.TLevel >> 4) {
+        // Unpin the slider
+        Steps[j][slider_num].b.WaitTimeSlider = 0;
+        Steps[j][slider_num].b.TLevel = smoothed;
+      }
+    } else {
+      Steps[j][slider_num].b.TLevel = smoothed;
+    }
+  }
+}
+
+void WriteOtherCv(uint8_t cv_num, uint32_t new_adc_reading) {
+  static volatile uint16_t voltage_smoothers[8];
+
+  uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff) << 4;
+  AddData[cv_num] = apply_voltage_smoother(adc_reading, &voltage_smoothers[cv_num]);
+}
+
+// ADC interrupt handler
+void ADC_IRQHandler() {
+  uint8_t stage = 0;
+
+  if (ADC_POT_sel_cnt < 16 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+    // POT_TYPE_VOLTAGE EOC
+    stage = ADC_POT_sel_cnt;
+    WriteVoltageSlider(stage, ADC1->DR);
+  }
+  else if (ADC_POT_sel_cnt < 24 && ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET) {
+    // POT_TYPE_OTHER EOC
+    stage = ADC_POT_sel_cnt - 16;
+    WriteOtherCv(stage, ADC2->DR);
+  }
+  else if (ADC_POT_sel_cnt < 40 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+    // POT_TYPE_TIME EOC
+    stage = ADC_POT_sel_cnt - 24;
+    WriteTimeSlider(stage, ADC1->DR);
+  }
+  else if (ADC_POT_sel_cnt < 56 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+    // More POT_TYPE_VOLTAGE EOC
+    stage = ADC_POT_sel_cnt - 24;
+    WriteVoltageSlider(stage, ADC1->DR);
+  } else if (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+    // More POT_TYPE_TIME EOC
+    stage = ADC_POT_sel_cnt - 40;
+    WriteTimeSlider(stage, ADC1->DR);
+  }
+
+  if (Is_Expander_Present()) {
+    // Increment the slider, including expander sliders
+    ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt);
+  } else {
+    // Increments the slider
+    ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt);
+  }
+
+  // Reading ADCs done
+  ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
+  ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
+
   delay_us(10);
-};
+}
 
 
 /*
