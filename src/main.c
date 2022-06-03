@@ -7,7 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "main.h"
-#include "sin.h"
 #include "MAX5135.h"
 #include "HC165.h"
 #include "adc_pots_selector.h"
@@ -22,10 +21,7 @@
 
 #define AIRCR_VECTKEY_MASK    ((uint32_t)0x05FA0000)
 
-volatile uint8_t ADC_POT_sel_cnt = 0;
-
-#define KEY_MIDDLE_SECTION_MASK					0x7F0000F003FFFEFC
-#define KEY_MIDDLE_SECTION_ALL_OFF_MASK 		0x070000F003FE0EFC			
+volatile uint8_t adc_pot_sel = 0;
 
 #define EXT_DAC_CH_0	0x00
 #define EXT_DAC_CH_1	0x01
@@ -57,17 +53,22 @@ typedef union {
   unsigned char value;
 } uDisplayUpdateFlag;
 
-volatile uDisplayUpdateFlag DisplayUpdateFlags;
+volatile uDisplayUpdateFlag display_update_flags;
 
+// Main steps array data
+volatile uStep steps[2][32];				
 #define SEQUENCER_DATA_SIZE (6*2*32)
-volatile uStep Steps[2][32];				//Main steps array data
 
-volatile uint16_t AddData[8];		//Additional analog data
-volatile unsigned int CalConstants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};		//Additional analog data
+// Additional analog data
+volatile uint16_t add_data[8];		
+volatile uint16_t cal_constants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};
+// Calibration scalers for external inputs, precomputed in setup
+float external_cal[8] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
 
-unsigned char swapped_pulses = 0; // do the pulse LEDs need to be swapped? 
+// Do the pulse LEDs need to be swapped? 
+unsigned char swapped_pulses = 0; 
 
-//Display modes
+// Display modes
 #define DISPLAY_MODE_VIEW_1				0
 #define DISPLAY_MODE_VIEW_2				1
 #define DISPLAY_MODE_EDIT_1				2
@@ -77,79 +78,66 @@ unsigned char swapped_pulses = 0; // do the pulse LEDs need to be swapped?
 #define DISPLAY_MODE_LOAD_1				6
 #define DISPLAY_MODE_LOAD_2				7
 
-volatile unsigned char 			gDisplayMode = DISPLAY_MODE_VIEW_1;		//Current display mode
-volatile unsigned char 			gSequenceStepNumber_1	= 0, gSequenceStepNumber_2	= 0; //Current step number
+// Current display mode
+volatile uint8_t display_mode = DISPLAY_MODE_VIEW_1;	
 
-volatile static unsigned long int 	gFullStepWidth_1 = 0,	gFullStepWidth_2 = 0;			//Length of the current step in timer "ticks"
-volatile static unsigned long int 	gStepWidth_1  = 0,		gStepWidth_2 = 0;							//Step counter
+// Current step number
+volatile uint8_t afg1_step_num = 0, afg2_step_num = 0; 
 
-unsigned char gEditModeStepNum = 0;
+// Length of the current step in timer "ticks"
+volatile static uint32_t afg1_step_width = 0, afg2_step_width = 0;
 
-//Sequencer modes
-#define SEQUENCER_MODE_RUN	0
-#define SEQUENCER_MODE_WAIT	1
-#define SEQUENCER_MODE_STOP	2
-#define SEQUENCER_MODE_WAIT_STROBE 	3
-#define SEQUENCER_MODE_WAIT_HI_Z		4
-#define SEQUENCER_MODE_STAY_HI_Z		5
-#define SEQUENCER_MODE_ADVANCE			6
+// Step counters
+volatile static uint32_t afg1_step_cnt = 0, afg2_step_cnt = 0;
 
-//Sequencer modes
-volatile unsigned char gSequencerMode_1 = SEQUENCER_MODE_RUN;
-volatile unsigned char gSequencerMode_2 = SEQUENCER_MODE_RUN;
+unsigned char edit_mode_step_num = 0;
 
-//Modes for start condition
+// Sequencer modes
+#define MODE_RUN	0
+#define MODE_WAIT	1
+#define MODE_STOP	2
+#define MODE_WAIT_STROBE 	3
+#define MODE_WAIT_HI_Z		4
+#define MODE_STAY_HI_Z		5
+#define MODE_ADVANCE			6
+
+// Sequencer modes
+volatile unsigned char afg1_mode = MODE_RUN;
+volatile unsigned char afg2_mode = MODE_RUN;
+volatile unsigned char afg1_prev_mode = MODE_RUN;
+volatile unsigned char afg2_prev_mode = MODE_RUN;
+volatile unsigned char afg1_advance = 0;
+volatile unsigned char afg2_advance = 0;
+
+// Modes for start condition
 #define START_MODE_ZERO				0
 #define START_MODE_WAIT_HI_Z	1
 #define START_MODE_HI_Z				2
 
-//Current mode for start condition
-volatile unsigned char gStartMode_1 = START_MODE_ZERO;
-volatile unsigned char gStartMode_2 = START_MODE_ZERO;
+// Current mode for start condition
+volatile unsigned char afg1_start_mode = START_MODE_ZERO;
+volatile unsigned char afg2_start_mode = START_MODE_ZERO;
 
-//Previous sequencer mode
-volatile unsigned char gPrevSequencerMode_1 = SEQUENCER_MODE_RUN;
-volatile unsigned char gPrevSequencerMode_2 = SEQUENCER_MODE_RUN;
-volatile unsigned char gSequencer1_AdvanceStep = 0;
-volatile unsigned char gSequencer2_AdvanceStep = 0;
+volatile unsigned char strobe_key = 0;
 
-volatile unsigned char gStrobeKey = 0;
-
-//Variable used for key lock during the VIEW_MODE key changes steps options
+// Variable used for key lock during the VIEW_MODE key changes steps options
 volatile unsigned char key_locked = 0;	
-volatile unsigned char gKeysNotValid = 0;
+volatile unsigned char keys_not_valid = 0;
 
-#define STEP_TIMER_FREQ_OUT		8000			//250uSec per timer period
+#define STEP_TIMER_FREQ_OUT		8000 // 250uSec per timer period
 #define STEP_TIMER_PRESCALER	(168000000/2/1/STEP_TIMER_FREQ_OUT)
-
-#define VOLTAGE_FULL_RANGE		4095
-#define VOLTAGE_0_OFFSET			0
-#define VOLTAGE_2_OFFSET			(4095/5)*1
-#define VOLTAGE_4_OFFSET			(4095/5)*2
-#define VOLTAGE_6_OFFSET			(4095/5)*3
-#define VOLTAGE_8_OFFSET			(4095/5)*4
-
-#define START_SIGNAL_DURATION					500
-
-//Counter for start signal debounce
-volatile uint8_t StartFilter_1	= 0;
-volatile uint8_t StartFilter_2	= 0;
-
-volatile uint8_t gSequenceReadvance_1 = 0;
-volatile uint8_t gSequenceReadvance_2 = 0;
-
-#define START_TIMER_SUSTAIN 	1			//1 = 250 uSec, 2 = 500 uSec, 3 = 0.75 mSec, 4 = 1 mSec, etc...
+#define START_TIMER_SUSTAIN 	1	// 250 uSec
 
 //Dip switch state
-volatile uDipConfig gDipConfig;
+volatile uDipConfig dip_config;
 
 // The voltage level of the current step
-volatile unsigned int CurrentStep = 0;
-volatile unsigned int CurrentStep_2 = 0;
+volatile unsigned int afg1_step_level = 0;
+volatile unsigned int afg2_step_level = 0;
 
 // The voltage level of the previous step
-volatile unsigned int PreviousStep = 0;
-volatile unsigned int PreviousStep_2 = 0;
+volatile unsigned int afg1_prev_step_level = 0;
+volatile unsigned int afg2_prev_step_level = 0;
 
 volatile uint8_t pots_step[2] = {1,1};
 volatile uint8_t previous_step[2] = {1,1};
@@ -161,16 +149,7 @@ float octave_offset; // span of 1 octave
 float semitone_offset; // span of 1 semitone
 float quantizer_magic; // reciprocal of semitone_offset
 
-
-volatile long long acc;
-volatile uint16_t steps_lp[2][32];
-volatile uint16_t tsteps_lp[2][32];
-
-volatile uint16_t step1;
-
-unsigned char rev; 
-
-unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum);
+unsigned char revision; 
 
 // Current patches bank
 volatile unsigned char bank = 1;
@@ -180,13 +159,8 @@ volatile unsigned char advanced_counter_1 = 0, advanced_counter_2 = 0;
 
 uint16_t counterL = 0; 
 uint16_t counterR = 0;
-
-uint16_t readings;
 uint16_t i;
-
 uint16_t tick;
-volatile uint32_t millis;
-
 
 #define KEY_DEBOUNCE_COUNT 3
 #define KEY_TIMER 5 // scan switches every 5ms
@@ -200,6 +174,8 @@ unsigned char start2 = 0;
 unsigned char stop2 = 0;
 int swing1 = 0;
 int swing2 = 0;
+
+volatile uint32_t millis;
 
 void systickInit(uint16_t frequency) {
   RCC_ClocksTypeDef RCC_Clocks;
@@ -248,14 +224,14 @@ void WriteVoltageSlider(uint8_t slider_num, uint32_t new_adc_reading) {
   uint16_t smoothed = apply_voltage_smoother(adc_reading << 4, &voltage_smoothers[slider_num]);
 
   for (uint8_t j = 0; j < 2; j++) {
-    if (Steps[j][slider_num].b.WaitVoltageSlider) {
-      if (smoothed >> 4 == Steps[j][slider_num].b.VLevel >> 4) {
+    if (steps[j][slider_num].b.WaitVoltageSlider) {
+      if (smoothed >> 4 == steps[j][slider_num].b.VLevel >> 4) {
         // Unpin the slider
-        Steps[j][slider_num].b.WaitVoltageSlider = 0;
-        Steps[j][slider_num].b.VLevel = smoothed;
+        steps[j][slider_num].b.WaitVoltageSlider = 0;
+        steps[j][slider_num].b.VLevel = smoothed;
       }
     } else {
-      Steps[j][slider_num].b.VLevel = smoothed;
+      steps[j][slider_num].b.VLevel = smoothed;
     }
   }
 }
@@ -267,14 +243,14 @@ void WriteTimeSlider(uint8_t slider_num, uint32_t new_adc_reading) {
   uint16_t smoothed = apply_voltage_smoother(adc_reading, &voltage_smoothers[slider_num]);
 
   for (uint8_t j = 0; j < 2; j++) {
-    if (Steps[j][slider_num].b.WaitTimeSlider) {
-      if (smoothed >> 4 == Steps[j][slider_num].b.TLevel >> 4) {
+    if (steps[j][slider_num].b.WaitTimeSlider) {
+      if (smoothed >> 4 == steps[j][slider_num].b.TLevel >> 4) {
         // Unpin the slider
-        Steps[j][slider_num].b.WaitTimeSlider = 0;
-        Steps[j][slider_num].b.TLevel = smoothed;
+        steps[j][slider_num].b.WaitTimeSlider = 0;
+        steps[j][slider_num].b.TLevel = smoothed;
       }
     } else {
-      Steps[j][slider_num].b.TLevel = smoothed;
+      steps[j][slider_num].b.TLevel = smoothed;
     }
   }
 }
@@ -283,44 +259,44 @@ void WriteOtherCv(uint8_t cv_num, uint32_t new_adc_reading) {
   static volatile uint16_t voltage_smoothers[8];
 
   uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff) << 4;
-  AddData[cv_num] = apply_voltage_smoother(adc_reading, &voltage_smoothers[cv_num]);
+  add_data[cv_num] = apply_voltage_smoother(adc_reading, &voltage_smoothers[cv_num]);
 }
 
 // ADC interrupt handler
 void ADC_IRQHandler() {
   uint8_t stage = 0;
 
-  if (ADC_POT_sel_cnt < 16 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+  if (adc_pot_sel < 16 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
     // POT_TYPE_VOLTAGE EOC
-    stage = ADC_POT_sel_cnt;
+    stage = adc_pot_sel;
     WriteVoltageSlider(stage, ADC1->DR);
   }
-  else if (ADC_POT_sel_cnt < 24 && ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET) {
+  else if (adc_pot_sel < 24 && ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET) {
     // POT_TYPE_OTHER EOC
-    stage = ADC_POT_sel_cnt - 16;
+    stage = adc_pot_sel - 16;
     WriteOtherCv(stage, ADC2->DR);
   }
-  else if (ADC_POT_sel_cnt < 40 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+  else if (adc_pot_sel < 40 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
     // POT_TYPE_TIME EOC
-    stage = ADC_POT_sel_cnt - 24;
+    stage = adc_pot_sel - 24;
     WriteTimeSlider(stage, ADC1->DR);
   }
-  else if (ADC_POT_sel_cnt < 56 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+  else if (adc_pot_sel < 56 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
     // More POT_TYPE_VOLTAGE EOC
-    stage = ADC_POT_sel_cnt - 24;
+    stage = adc_pot_sel - 24;
     WriteVoltageSlider(stage, ADC1->DR);
   } else if (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
     // More POT_TYPE_TIME EOC
-    stage = ADC_POT_sel_cnt - 40;
+    stage = adc_pot_sel - 40;
     WriteTimeSlider(stage, ADC1->DR);
   }
 
   if (Is_Expander_Present()) {
     // Increment the slider, including expander sliders
-    ADC_POT_sel_cnt = ADC_inc_expanded(ADC_POT_sel_cnt);
+    adc_pot_sel = ADC_inc_expanded(adc_pot_sel);
   } else {
     // Increments the slider
-    ADC_POT_sel_cnt = ADC_inc(ADC_POT_sel_cnt);
+    adc_pot_sel = ADC_inc(adc_pot_sel);
   }
 
   // Reading ADCs done
@@ -371,18 +347,12 @@ void mADC_init(void)
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC1, ENABLE);
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_ADC2, ENABLE);
 
-
-  // lines added 25/3/2020 GAM to try to slow down the ADC clock
-  // I think it was running at 42MHz before which is too fast.
-  // 21MHz is in range and still fast enough,
   ADC_CommonInitTypeDef ADC_CommonInitStructure;
-
   ADC_CommonInitStructure.ADC_Mode = ADC_Mode_Independent;
   ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div6;
   ADC_CommonInitStructure.ADC_DMAAccessMode = ADC_DMAAccessMode_Disabled;
   ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
   ADC_CommonInit(&ADC_CommonInitStructure);
-  // end GAM code
 
   ADC_StructInit(&ADC_InitType);
   ADC_InitType.ADC_ContinuousConvMode 	= DISABLE;
@@ -405,7 +375,7 @@ void mADC_init(void)
   nvicStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&nvicStructure);
 
-  ADC_POT_sel_cnt = 0;
+  adc_pot_sel = 0;
   ADC_POTS_selector_Ch(0);
 
   NVIC_EnableIRQ(ADC_IRQn);
@@ -416,19 +386,16 @@ void mADC_init(void)
 };
 
 
-void ADCPause(void)
-{
+void ADCPause(void) {
   NVIC_DisableIRQ(ADC_IRQn);
 };
 
-void ADCResume(void)
-{
+void ADCResume(void) {
   NVIC_EnableIRQ(ADC_IRQn);
 };
 
-//External interrupts init for start and stop switches
-void mInterruptInit(void)
-{
+// External interrupts init for start and stop
+void mInterruptInit(void) {
   GPIO_InitTypeDef mGPIO;
   EXTI_InitTypeDef mInt;
   NVIC_InitTypeDef NVIC_InitStructure;
@@ -444,12 +411,11 @@ void mInterruptInit(void)
   SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource0);
   SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource1);
   SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource5);
-  //SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource6);
+  // SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource6);
   SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource7);
-  //	SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource8);
+  // SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource8);
 
-
-  //START-STOP LINE INIT Interrupt
+  // START-STOP LINE INIT Interrupt
   EXTI_DeInit();
   mInt.EXTI_Line = EXTI_Line0|EXTI_Line1|EXTI_Line5|/*EXTI_Line6|*/EXTI_Line7/*|EXTI_Line8*/;
   mInt.EXTI_Mode = EXTI_Mode_Interrupt;
@@ -478,50 +444,43 @@ void mInterruptInit(void)
   EXTI_ClearITPendingBit(EXTI_Line0);
   EXTI_ClearITPendingBit(EXTI_Line1);
   EXTI_ClearITPendingBit(EXTI_Line5);
-  //EXTI_ClearITPendingBit(EXTI_Line6);
   EXTI_ClearITPendingBit(EXTI_Line7);
-  //	EXTI_ClearITPendingBit(EXTI_Line8);
 };
 
 void doStop1() {
-  if ((gSequencerMode_1 != SEQUENCER_MODE_WAIT && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z && gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z)) {
-    gPrevSequencerMode_1 = SEQUENCER_MODE_RUN;
-    gSequencerMode_1 = SEQUENCER_MODE_STOP;
+  if ((afg1_mode != MODE_WAIT && afg1_mode != MODE_WAIT_HI_Z && afg1_mode != MODE_STAY_HI_Z)) {
+    afg1_prev_mode = MODE_RUN;
+    afg1_mode = MODE_STOP;
     swing1 = 0;
-    DisplayUpdateFlags.b.MainDisplay 	= 1;
-    DisplayUpdateFlags.b.StepsDisplay = 1;
+    display_update_flags.b.MainDisplay 	= 1;
+    display_update_flags.b.StepsDisplay = 1;
   };
 }
 
 void doStop2() {
-  //if we are not in wait condition then stop the sequenser
-  if (gSequencerMode_2 != SEQUENCER_MODE_WAIT && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z && gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z)
-  {
-    gPrevSequencerMode_2 = SEQUENCER_MODE_RUN;
-    gSequencerMode_2 = SEQUENCER_MODE_STOP;
+  if (afg2_mode != MODE_WAIT && afg2_mode != MODE_WAIT_HI_Z && afg2_mode != MODE_STAY_HI_Z) {
+    afg2_prev_mode = MODE_RUN;
+    afg2_mode = MODE_STOP;
     swing2 = 0;
-    //Update both
-    DisplayUpdateFlags.b.MainDisplay = 1;
-    DisplayUpdateFlags.b.StepsDisplay = 1;
+    display_update_flags.b.MainDisplay = 1;
+    display_update_flags.b.StepsDisplay = 1;
   };
 }
 
-//STOP KEY-BANANA Interrupt handler
-//1 SECTION
-void EXTI0_IRQHandler()
-{
-
-
-  // handling this in the main loop now
+// AFG1 stop interrupt
+void EXTI0_IRQHandler() {
+  // Handled in the main loop
   EXTI_ClearITPendingBit(EXTI_Line0);	
 };
 
+// AFG2 stop interrupt
+void EXTI1_IRQHandler() {
+  // Handled in the main loop
+  EXTI_ClearITPendingBit(EXTI_Line1);
+};
 
-/*
-	Init timer for start pulse (section 1) duration measurement 
- */
-void InitStart_1_SignalTimer()
-{
+// Start Timer 3 for AFG1 start pulse duration measurement
+void InitStart_1_SignalTimer() {
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
 
   TIM3->PSC = STEP_TIMER_PRESCALER;
@@ -533,11 +492,8 @@ void InitStart_1_SignalTimer()
   NVIC_EnableIRQ(TIM3_IRQn);
 };
 
-/*
-	Init timer for start pulse (section 2) duration measurement 
- */
-void InitStart_2_SignalTimer()
-{
+// Start Timer 7 for AFG2 start pulse duration measurement
+void InitStart_2_SignalTimer() {
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM7, ENABLE);
 
   TIM7->PSC = STEP_TIMER_PRESCALER;
@@ -549,8 +505,8 @@ void InitStart_2_SignalTimer()
   NVIC_EnableIRQ(TIM7_IRQn);
 };
 
-void InitClear_Timer()
-{
+// Start Timer 6 for clear switch measurement
+void InitClear_Timer() {
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM6, ENABLE);
 
   TIM6->PSC = 21000;
@@ -563,54 +519,47 @@ void InitClear_Timer()
   TIM_ITConfig(TIM6, TIM_IT_Update, ENABLE);
 };
 
-//STOP KEY-BANANA Interrupt handler
-//2 SECTION
-void EXTI1_IRQHandler()
-{
-  EXTI_ClearITPendingBit(EXTI_Line1);
-};
-
-void doStart1() {
-  if (gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z
-      && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z
-      && gSequencerMode_1 != SEQUENCER_MODE_WAIT
-      && gSequencerMode_1 != SEQUENCER_MODE_RUN) {
+void DoStart1() {
+  if (afg1_mode != MODE_STAY_HI_Z
+      && afg1_mode != MODE_WAIT_HI_Z
+      && afg1_mode != MODE_WAIT
+      && afg1_mode != MODE_RUN) {
     // Go into run
-    gSequencerMode_1 = SEQUENCER_MODE_RUN;
-    gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+    afg1_mode = MODE_RUN;
+    afg1_step_num = GetNextStep(0, afg1_step_num);
     DoStepOutputPulses1();
   }
 
-  if (gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z) {
+  if (afg1_mode == MODE_WAIT_HI_Z) {
     // If waiting on enable step, start running again
     InitStart_1_SignalTimer();
-    gSequencerMode_1 = SEQUENCER_MODE_RUN;
-    gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+    afg1_mode = MODE_RUN;
+    afg1_step_num = GetNextStep(0, afg1_step_num);
     DoStepOutputPulses1();
   }
 
-  if (gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z) {
+  if (afg1_mode == MODE_STAY_HI_Z) {
     InitStart_1_SignalTimer();
   };
 }
 
-void doStart2() {
-  if (gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z
-      && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z
-      && gSequencerMode_2 != SEQUENCER_MODE_WAIT
-      && gSequencerMode_2 != SEQUENCER_MODE_RUN) {
-    gSequencerMode_2 = SEQUENCER_MODE_RUN;
-    gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+void DoStart2() {
+  if (afg2_mode != MODE_STAY_HI_Z
+      && afg2_mode != MODE_WAIT_HI_Z
+      && afg2_mode != MODE_WAIT
+      && afg2_mode != MODE_RUN) {
+    afg2_mode = MODE_RUN;
+    afg2_step_num = GetNextStep(1, afg2_step_num);
     DoStepOutputPulses2();
   }
-  if(gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z) {
+  if(afg2_mode == MODE_WAIT_HI_Z) {
     InitStart_2_SignalTimer();
-    gSequencerMode_2 = SEQUENCER_MODE_RUN;
-    gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+    afg2_mode = MODE_RUN;
+    afg2_step_num = GetNextStep(1, afg2_step_num);
     DoStepOutputPulses2();
   }
 
-  if(gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z) {
+  if(afg2_mode == MODE_STAY_HI_Z) {
     InitStart_2_SignalTimer();
   }
 }
@@ -619,33 +568,33 @@ void JumpToStep1(unsigned int step) {
   unsigned int OutputVoltage = 0;
 
   // Sample and hold current output voltage value.
-  PreviousStep = CurrentStep;
+  afg1_prev_step_level = afg1_step_level;
 
   // Then update the step number to where ever we are strobing to
-  gSequenceStepNumber_1 = step;
+  afg1_step_num = step;
 
   // Reset step width
-  gStepWidth_1 = 0;
+  afg1_step_cnt = 0;
 
-  if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
-    DisplayUpdateFlags.b.MainDisplay = 1;
-    DisplayUpdateFlags.b.StepsDisplay = 1;
+  if (display_mode == DISPLAY_MODE_VIEW_1) {
+    display_update_flags.b.MainDisplay = 1;
+    display_update_flags.b.StepsDisplay = 1;
   };
 
-  if (Steps[0][gSequenceStepNumber_1].b.Sloped ) {
+  if (steps[0][afg1_step_num].b.Sloped ) {
     // Sloped step, hold the value
-    OutputVoltage = PreviousStep;
+    OutputVoltage = afg1_prev_step_level;
   } else {
     // Stepped, immediately jump
-    OutputVoltage = GetStepVoltage(0, gSequenceStepNumber_1);
+    OutputVoltage = GetStepVoltage(0, afg1_step_num);
   }
 
   // Set DAC channel 1 to AFG1 voltage out value
-  CurrentStep = OutputVoltage;
+  afg1_step_level = OutputVoltage;
   DAC_SetChannel1Data(DAC_Align_12b_R, OutputVoltage);
 
   // Set AFG1 time out value
-  MAX5135_DAC_send(EXT_DAC_CH_0, Steps[0][gSequenceStepNumber_1].b.TLevel >> 2);
+  MAX5135_DAC_send(EXT_DAC_CH_0, steps[0][afg1_step_num].b.TLevel >> 2);
 
   // Set AFG1 reference out value
   // (Slopes down from 1023 to 0 over the course of the step)
@@ -654,92 +603,49 @@ void JumpToStep1(unsigned int step) {
   DoStepOutputPulses1();
 }
 
-/* Handle strobing to new stage. */
-void doStrobe1() {
-  JumpToStep1((unsigned int) (pots_step[0] - 1));
-}
-
 /* Handle jumping to new stage. Keep in sync with 1. */
 void JumpToStep2(unsigned int step) {
   unsigned int OutputVoltage = 0;
 
-  PreviousStep_2 = CurrentStep_2;
-  gSequenceStepNumber_2 = step;
-  gStepWidth_2 = 0;
+  afg2_prev_step_level = afg2_step_level;
+  afg2_step_num = step;
+  afg2_step_cnt = 0;
 
-  if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
-    DisplayUpdateFlags.b.MainDisplay = 1;
-    DisplayUpdateFlags.b.StepsDisplay = 1;
+  if (display_mode == DISPLAY_MODE_VIEW_2) {
+    display_update_flags.b.MainDisplay = 1;
+    display_update_flags.b.StepsDisplay = 1;
   };
 
-  if (Steps[1][gSequenceStepNumber_2].b.Sloped ) {
-    OutputVoltage = PreviousStep_2;
+  if (steps[1][afg2_step_num].b.Sloped ) {
+    OutputVoltage = afg2_prev_step_level;
   } else {
-    OutputVoltage = GetStepVoltage(1, gSequenceStepNumber_2);
+    OutputVoltage = GetStepVoltage(1, afg2_step_num);
   }
 
-  CurrentStep_2 = OutputVoltage;
+  afg2_step_level = OutputVoltage;
   DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
 
-  MAX5135_DAC_send(EXT_DAC_CH_2, Steps[1][gSequenceStepNumber_2].b.TLevel >> 2);
+  MAX5135_DAC_send(EXT_DAC_CH_2, steps[1][afg2_step_num].b.TLevel >> 2);
   MAX5135_DAC_send(EXT_DAC_CH_3, 1023);
 
   DoStepOutputPulses2();
 }
 
-/* Handle strobing to new stage. Keep in sync with doStrobe1(). */
-void doStrobe2() {
-  JumpToStep2((unsigned int) (pots_step[1]-1));
-}
-
-/* Advance by start/stop pulse. */
-void ExtClockProcessor_1() {
-  gSequencerMode_1 = SEQUENCER_MODE_ADVANCE;
-  JumpToStep1(GetNextStep(0, gSequenceStepNumber_1));
-};
-
-/* Advance by start/stop pulse. */
-void ExtClockProcessor_2() {
-  gSequencerMode_2 = SEQUENCER_MODE_ADVANCE;
-  JumpToStep2(GetNextStep(1, gSequenceStepNumber_2));
-}
-
-/* Interrupt handler for strobe signals. */
+// Interrupt handler for strobe signals.
 void EXTI9_5_IRQHandler() {
-  //1 Section
-  //1 LH
-
-  //printf("StartPulse \n");
-
-  /* if (EXTI->PR & (1<<8)) { */
-  /*   start1 = EXTCLOCK_WINDOW;  */
-  /*   EXTI_ClearITPendingBit(EXTI_Line8); */
-  /* }; */
-
-  //2 Section
-
-  /* if (EXTI->PR & (1<<6)) {
-
-
-	 };*/
-
-  //Strobe jack A
+  // Strobe 1
   if (EXTI->PR & (1<<5)) {
-
-    doStrobe1();
-
+    JumpToStep1((unsigned int) (pots_step[0] - 1));
     EXTI_ClearITPendingBit(EXTI_Line5);
   };
 
-  //Strobe jack B
+  // Strobe 2
   if (EXTI->PR & (1<<7)) {
-    doStrobe2();
+    JumpToStep2((unsigned int) (pots_step[1]-1));
     EXTI_ClearITPendingBit(EXTI_Line7);
-
   };
-
-  DisplayUpdateFlags.b.MainDisplay = 1;
-  DisplayUpdateFlags.b.StepsDisplay = 1;
+  display_update_flags.b.MainDisplay = 1;
+  display_update_flags.b.StepsDisplay = 1;
 };
 
 
@@ -752,13 +658,13 @@ unsigned char SaveSequence(unsigned char SequenceCell)
   ADCPause();
   if(!Is_Expander_Present())
   {
-    CAT25512_write_block(bank*SequenceCell*sizeof(Steps), (unsigned char *) Steps[0], sizeof(Steps[0]));
-    CAT25512_write_block(bank*SequenceCell*sizeof(Steps)+sizeof(Steps[0]), (unsigned char *) Steps[1], sizeof(Steps[1]));
+    CAT25512_write_block(bank*SequenceCell*sizeof(steps), (unsigned char *) steps[0], sizeof(steps[0]));
+    CAT25512_write_block(bank*SequenceCell*sizeof(steps)+sizeof(steps[0]), (unsigned char *) steps[1], sizeof(steps[1]));
   }
   else
   {
-    CAT25512_write_block((SequenceCell+32)*sizeof(Steps), (unsigned char *) Steps[0], sizeof(Steps[0]));
-    CAT25512_write_block((SequenceCell+32)*sizeof(Steps)+sizeof(Steps[0]), (unsigned char *) Steps[1], sizeof(Steps[1]));
+    CAT25512_write_block((SequenceCell+32)*sizeof(steps), (unsigned char *) steps[0], sizeof(steps[0]));
+    CAT25512_write_block((SequenceCell+32)*sizeof(steps)+sizeof(steps[0]), (unsigned char *) steps[1], sizeof(steps[1]));
   }
   mADC_init();
   return 0;
@@ -772,36 +678,36 @@ void LoadSequence(unsigned char SequenceCell)
   ADCPause();
   if(!Is_Expander_Present())
   {
-    CAT25512_read_block(bank*SequenceCell*sizeof(Steps), (unsigned char *) Steps[0], sizeof(Steps[0]));
-    CAT25512_read_block(bank*SequenceCell*sizeof(Steps)+sizeof(Steps[0]), (unsigned char *) Steps[1], sizeof(Steps[1]));
+    CAT25512_read_block(bank*SequenceCell*sizeof(steps), (unsigned char *) steps[0], sizeof(steps[0]));
+    CAT25512_read_block(bank*SequenceCell*sizeof(steps)+sizeof(steps[0]), (unsigned char *) steps[1], sizeof(steps[1]));
   }
   else
   {
-    CAT25512_read_block((SequenceCell+32)*sizeof(Steps), (unsigned char *) Steps[0], sizeof(Steps[0]));
-    CAT25512_read_block((SequenceCell+32)*sizeof(Steps)+sizeof(Steps[0]), (unsigned char *) Steps[1], sizeof(Steps[1]));
+    CAT25512_read_block((SequenceCell+32)*sizeof(steps), (unsigned char *) steps[0], sizeof(steps[0]));
+    CAT25512_read_block((SequenceCell+32)*sizeof(steps)+sizeof(steps[0]), (unsigned char *) steps[1], sizeof(steps[1]));
   }
 
   //Block sliders scanning while voltages from slider and preset aren't equal
-  if (gDipConfig.b.SAVE_V_LEVEL == 1) {
+  if (dip_config.b.SAVE_V_LEVEL == 1) {
     for(cnt=0; cnt<16; cnt++)
     {
-      Steps[0][cnt].b.WaitVoltageSlider = 1;
-      Steps[0][cnt].b.WaitTimeSlider = 1;
-      Steps[1][cnt].b.WaitVoltageSlider = 1;
-      Steps[1][cnt].b.WaitTimeSlider = 1;
-      Steps[0][cnt+16].b.WaitVoltageSlider = 1;
-      Steps[0][cnt+16].b.WaitTimeSlider = 1;
-      Steps[1][cnt+16].b.WaitVoltageSlider = 1;
-      Steps[1][cnt+16].b.WaitTimeSlider = 1;
+      steps[0][cnt].b.WaitVoltageSlider = 1;
+      steps[0][cnt].b.WaitTimeSlider = 1;
+      steps[1][cnt].b.WaitVoltageSlider = 1;
+      steps[1][cnt].b.WaitTimeSlider = 1;
+      steps[0][cnt+16].b.WaitVoltageSlider = 1;
+      steps[0][cnt+16].b.WaitTimeSlider = 1;
+      steps[1][cnt+16].b.WaitVoltageSlider = 1;
+      steps[1][cnt+16].b.WaitTimeSlider = 1;
     };
   };
 
-  gSequencerMode_1 = SEQUENCER_MODE_STOP;
-  gSequencerMode_2 = SEQUENCER_MODE_STOP;
-  if (Steps[0][0].b.Swing){
+  afg1_mode = MODE_STOP;
+  afg2_mode = MODE_STOP;
+  if (steps[0][0].b.Swing){
     swing1 = 1;
   }
-  if (Steps[1][0].b.Swing){
+  if (steps[1][0].b.Swing){
     swing2 = 1;
   }
 
@@ -816,37 +722,35 @@ void LoadSequence(unsigned char SequenceCell)
 #define EXT_VOLTAGE_STEP_SELECT	1500
 #define EXT_VOLTAGE_STEP_OFFSET	1000
 
-unsigned long int GetStepWidth(unsigned char _Section, unsigned char _StepNum)
-{
-  unsigned long int ret_val = 0;
-  unsigned long int time_level = 0;
-  unsigned char ext_ban_num = 0;
+uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
+  uint32_t ret_val = 0;
+  uint32_t time_level = 0;
+  uint8_t ext_ban_num = 0;
 
-  if (Steps[_Section][_StepNum].b.TimeSource) {
-
-    //Step time is set externally
-    ext_ban_num = (Steps[_Section][_StepNum].b.TLevel + EXT_VOLTAGE_STEP_OFFSET)/EXT_VOLTAGE_STEP_SELECT;
-    if(ext_ban_num > 3) ext_ban_num = 3;
-
-    time_level = AddData[ext_ban_num]*(4095.0f/((float)CalConstants[ext_ban_num]));
+  if (steps[section][step_num].b.TimeSource) {
+    // Step time is set externally
+    ext_ban_num = (uint8_t) steps[section][step_num].b.TLevel >> 10;
+    time_level = add_data[ext_ban_num] * external_cal[ext_ban_num];
   } else {
-    //Step time is set on panel
-    time_level = (Steps[_Section][_StepNum].b.TLevel + 1);
+    // Step time is set on panel
+    time_level = (steps[section][step_num].b.TLevel + 1);
   };
 
-  if (Steps[_Section][_StepNum].b.TimeRange_p03 == 1) {
+  // TODO(maxl0rd): factor out divisions
+
+  if (steps[section][step_num].b.TimeRange_p03 == 1) {
     ret_val = (unsigned long int) ((((float) time_level * 112)/4095) +8);
   };
 
-  if (Steps[_Section][_StepNum].b.TimeRange_p3 == 1) {
+  if (steps[section][step_num].b.TimeRange_p3 == 1) {
     ret_val = (unsigned long int) ((((float) time_level * 1120)/4095) +80);
   };
 
-  if (Steps[_Section][_StepNum].b.TimeRange_3 == 1) {
+  if (steps[section][step_num].b.TimeRange_3 == 1) {
     ret_val = (unsigned long int) ((((float) time_level * 11200)/4095) +800);
   };
 
-  if (Steps[_Section][_StepNum].b.TimeRange_30 == 1) {
+  if (steps[section][step_num].b.TimeRange_30 == 1) {
     ret_val = (unsigned long int) ((((float) time_level * 112000)/4095) +8000);
   };
 
@@ -857,27 +761,21 @@ unsigned long int GetStepWidth(unsigned char _Section, unsigned char _StepNum)
 /*
 	Return the voltage for step number _StepNum in section _Section
  */
-#define MAX_DAC_VALUE			0xFFF
-#define FULL_RANGE_STEPS	60
-#define QUANTIZE_DIVIDER	MAX_DAC_VALUE/FULL_RANGE_STEPS
 
-// Calibration scalers for external inputs, precomputed in setup
-float external_cal[8] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-
-unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum) {
+uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
 
   float voltage_level = 0.0; // stay in floating point throughout!
-  unsigned char ext_ban_num = 0;
+  uint8_t ext_ban_num = 0;
 
-  if (Steps[_Section][_StepNum].b.VoltageSource) {
+  if (steps[section][step_num].b.VoltageSource) {
     // Step voltage is set externally
-    ext_ban_num = (Steps[_Section][_StepNum].b.VLevel
+    ext_ban_num = (steps[section][step_num].b.VLevel
         + EXT_VOLTAGE_STEP_OFFSET)/EXT_VOLTAGE_STEP_SELECT;
     if (ext_ban_num > 3) ext_ban_num = 3;
-    voltage_level = (float) AddData[ext_ban_num] * external_cal[ext_ban_num];
+    voltage_level = (float) add_data[ext_ban_num] * external_cal[ext_ban_num];
   } else {
     // Step voltage is set by slider
-    voltage_level = Steps[_Section][_StepNum].b.VLevel;
+    voltage_level = steps[section][step_num].b.VLevel;
   };
 
   // Clamp if smoothing or something has gone awry
@@ -887,21 +785,21 @@ unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum) {
     voltage_level = 0.0;
   }
 
-  if (!Steps[_Section][_StepNum].b.FullRange) {
+  if (!steps[section][step_num].b.FullRange) {
     // Scale voltage for limited range
     voltage_level *= limited_range_multiplier;
-    if (Steps[_Section][_StepNum].b.Voltage2) {
+    if (steps[section][step_num].b.Voltage2) {
       voltage_level += octave_offset;
-    } else if (Steps[_Section][_StepNum].b.Voltage4) {
+    } else if (steps[section][step_num].b.Voltage4) {
       voltage_level += octave_offset * 2;
-    } else if (Steps[_Section][_StepNum].b.Voltage6) {
+    } else if (steps[section][step_num].b.Voltage6) {
       voltage_level += octave_offset * 3;
-    } else if (Steps[_Section][_StepNum].b.Voltage8) {
+    } else if (steps[section][step_num].b.Voltage8) {
       voltage_level += octave_offset * 4;
     }
   }
 
-  if (Steps[_Section][_StepNum].b.Quantize) {
+  if (steps[section][step_num].b.Quantize) {
     // Quantize the output to semitones.
     // Use the precomputed magic values to avoid float divisions
     voltage_level += 0.5 * semitone_offset;
@@ -912,53 +810,49 @@ unsigned int GetStepVoltage(unsigned char _Section, unsigned char _StepNum) {
   return (unsigned int) voltage_level + 0.5;
 };
 
-/*
-	Calculate the number of next step
-	_StepNum - current step number in section _Section
- */
-unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum) {
+// Calculate the number of next step
+uint8_t GetNextStep(uint8_t section, uint8_t step_num) {
 
-  unsigned char ret_val = 0;
-  unsigned char isLastStage = 0;
-  unsigned char tmp=0;
-  unsigned char max_step;
+  uint8_t ret_val = 0;
+  uint8_t is_last = 0;
+  uint8_t tmp = 0;
+  uint8_t max_step;
 
-  if(Is_Expander_Present()) max_step = 31;
-  else
-  {
+  if (Is_Expander_Present()) {
+    max_step = 31;
+  } else {
     max_step = 15;
-    if(_StepNum > 15) return 0;
+    if(step_num > 15) return 0;
   }
 
-  isLastStage = Steps[_Section][_StepNum].b.CycleLast;
+  is_last = steps[section][step_num].b.CycleLast;
 
-  if (isLastStage != 0) {
-    //Current step is last step
-    for(tmp = 0; tmp <= max_step; tmp++)
-    {
-      if (tmp<=_StepNum) {
-        if (Steps[_Section][_StepNum-tmp].b.CycleFirst) {
-          ret_val = _StepNum-tmp;
+  if (is_last != 0) {
+    // Current step is last step
+    for (tmp = 0; tmp <= max_step; tmp++) {
+      if (tmp<=step_num) {
+        if (steps[section][step_num-tmp].b.CycleFirst) {
+          ret_val = step_num-tmp;
           break;
         };
       } else {
-        if (Steps[_Section][max_step-(tmp-_StepNum)].b.CycleFirst) {
-          ret_val = max_step-(tmp-_StepNum);
+        if (steps[section][max_step-(tmp-step_num)].b.CycleFirst) {
+          ret_val = max_step-(tmp-step_num);
           break;
         };
       };
 
       if (tmp == max_step) {
-        isLastStage = 0;
+        is_last = 0;
       };
     };
   }
 
-  if (isLastStage == 0) {
-    if ( _StepNum >= max_step ) {
+  if (is_last == 0) {
+    if ( step_num >= max_step ) {
       ret_val = 0;
     } else {
-      ret_val = _StepNum+1;
+      ret_val = step_num+1;
     };
   };
 
@@ -981,129 +875,129 @@ void TIM4_IRQHandler() {
 
   // Calculate step duration and scaler for Timer 4.
   // Units are kind of obscure here.
-  StepWidth_1 = GetStepWidth(0, gSequenceStepNumber_1);
+  StepWidth_1 = GetStepWidth(0, afg1_step_num);
   TIM4->PSC = (uint16_t) (
-      (((((float) AddData[ADC_TIMEMULTIPLY_Ch_1]) * 3.5f)
-          / CalConstants[ADC_TIMEMULTIPLY_Ch_1]) + 0.5f)
+      (((((float) add_data[ADC_TIMEMULTIPLY_Ch_1]) * 3.5f)
+          / cal_constants[ADC_TIMEMULTIPLY_Ch_1]) + 0.5f)
           * STEP_TIMER_PRESCALER);
 
-  if (gStepWidth_1 < StepWidth_1) {
-    gStepWidth_1 += 1;
+  if (afg1_step_cnt < StepWidth_1) {
+    afg1_step_cnt += 1;
   };
 
   // Check if we're at the end of the step
-  if ((gStepWidth_1 >= StepWidth_1)) {
+  if ((afg1_step_cnt >= StepWidth_1)) {
     // Sample and hold current step value	into PreviousStep for next step slope computation
-    PreviousStep = CurrentStep;
+    afg1_prev_step_level = afg1_step_level;
 
     // Reset step width
-    gStepWidth_1 = 0;
+    afg1_step_cnt = 0;
 
     // Resolve mode change for step end
 
-    if ((gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)) {
+    if ((afg1_mode == MODE_ADVANCE)) {
       // Stop after advance
-      gSequencerMode_1 =  SEQUENCER_MODE_STOP;
+      afg1_mode =  MODE_STOP;
     };
 
-    if (Steps[0][gSequenceStepNumber_1].b.OpModeSTOP) {
+    if (steps[0][afg1_step_num].b.OpModeSTOP) {
       // Stop step
-      gPrevSequencerMode_1 = gSequencerMode_1;
-      gSequencerMode_1 = SEQUENCER_MODE_STOP;
+      afg1_prev_mode = afg1_mode;
+      afg1_mode = MODE_STOP;
     };
 
-    if (Steps[0][gSequenceStepNumber_1].b.OpModeENABLE
-        && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z)  {
+    if (steps[0][afg1_step_num].b.OpModeENABLE
+        && afg1_mode != MODE_WAIT_HI_Z)  {
       // Enable step, check start banana
       if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) {
         // Go into enable mode
-        gPrevSequencerMode_1 = gSequencerMode_1;
-        gSequencerMode_1 = SEQUENCER_MODE_WAIT_HI_Z;
+        afg1_prev_mode = afg1_mode;
+        afg1_mode = MODE_WAIT_HI_Z;
       };
     };
 
-    if (Steps[0][gSequenceStepNumber_1].b.OpModeSUSTAIN
-        && gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z) {
+    if (steps[0][afg1_step_num].b.OpModeSUSTAIN
+        && afg1_mode != MODE_STAY_HI_Z) {
       // Sustain step, check start banana
       if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1)) {
         // Go into sustain mode
-        gPrevSequencerMode_1 = gSequencerMode_1;
-        gSequencerMode_1 = SEQUENCER_MODE_STAY_HI_Z;
+        afg1_prev_mode = afg1_mode;
+        afg1_mode = MODE_STAY_HI_Z;
         InitStart_1_SignalTimer();
       };
     };
 
-    if (gSequencerMode_1 == SEQUENCER_MODE_RUN) {
+    if (afg1_mode == MODE_RUN) {
       // Advance to the next step
-      gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+      afg1_step_num = GetNextStep(0, afg1_step_num);
       doPulses = 1;
     };
 
-    if (gSequencerMode_1 == SEQUENCER_MODE_STOP && swing1) {
+    if (afg1_mode == MODE_STOP && swing1) {
       // Fire pulses again at end of step if "swing" is on
       doPulses = 1;
     }
 
-    if (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE) {
+    if (afg1_mode == MODE_ADVANCE) {
       // Advance to the next step
-      gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+      afg1_step_num = GetNextStep(0, afg1_step_num);
       doPulses = 1;
     };
   };
 
 
-  if (gSequencerMode_1 == SEQUENCER_MODE_WAIT) {
+  if (afg1_mode == MODE_WAIT) {
     // Continuous step address mode. Check if the step has changed.
-    if (gSequenceStepNumber_1 != (unsigned int) (pots_step[0] - 1)) {
+    if (afg1_step_num != (unsigned int) (pots_step[0] - 1)) {
       // Sample and hold current voltage output value
-      PreviousStep = CurrentStep;
-      gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
+      afg1_prev_step_level = afg1_step_level;
+      afg1_step_num = (unsigned int) (pots_step[0]-1);
       // Reset step width
-      gStepWidth_1 = 0;
+      afg1_step_cnt = 0;
       doPulses = 1;
     }
   };
 
-  if (gSequencerMode_1 == SEQUENCER_MODE_WAIT_STROBE) {
+  if (afg1_mode == MODE_WAIT_STROBE) {
     // What does this do?
-    gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
-    gSequencerMode_1 = gPrevSequencerMode_1;
+    afg1_step_num = (unsigned int) (pots_step[0]-1);
+    afg1_mode = afg1_prev_mode;
   }
 
-  if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
-    DisplayUpdateFlags.b.MainDisplay = 1;
-    DisplayUpdateFlags.b.StepsDisplay = 1;
+  if (display_mode == DISPLAY_MODE_VIEW_1) {
+    display_update_flags.b.MainDisplay = 1;
+    display_update_flags.b.StepsDisplay = 1;
   };
 
   // Now set output voltages
   // Compute the current step's programmed voltage output
-  OutputVoltage = GetStepVoltage(0, gSequenceStepNumber_1);
+  OutputVoltage = GetStepVoltage(0, afg1_step_num);
 
   // If the step is sloped, then slope from PreviousStep to the new output value
-  if (Steps[0][gSequenceStepNumber_1].b.Sloped ) {
-    if (PreviousStep >= OutputVoltage) {
+  if (steps[0][afg1_step_num].b.Sloped ) {
+    if (afg1_prev_step_level >= OutputVoltage) {
       // Slope down
-      deltaVoltage = (float) (PreviousStep - OutputVoltage) / StepWidth_1;
-      OutputVoltage = PreviousStep - (unsigned int) (deltaVoltage * gStepWidth_1);
-    } else if (OutputVoltage > PreviousStep) {
+      deltaVoltage = (float) (afg1_prev_step_level - OutputVoltage) / StepWidth_1;
+      OutputVoltage = afg1_prev_step_level - (unsigned int) (deltaVoltage * afg1_step_cnt);
+    } else if (OutputVoltage > afg1_prev_step_level) {
       // Slope up
-      deltaVoltage =  (float) (OutputVoltage - PreviousStep) / StepWidth_1;
-      OutputVoltage = PreviousStep + (unsigned int) (deltaVoltage * gStepWidth_1);
+      deltaVoltage =  (float) (OutputVoltage - afg1_prev_step_level) / StepWidth_1;
+      OutputVoltage = afg1_prev_step_level + (unsigned int) (deltaVoltage * afg1_step_cnt);
     }
   }
 
   // Set DAC channel 1 to AFG1 voltage out value
-  CurrentStep = OutputVoltage;
+  afg1_step_level = OutputVoltage;
   DAC_SetChannel1Data(DAC_Align_12b_R, OutputVoltage);
 
   // Set AFG1 time out value
-  MAX5135_DAC_send(EXT_DAC_CH_0, Steps[0][gSequenceStepNumber_1].b.TLevel >> 2);
+  MAX5135_DAC_send(EXT_DAC_CH_0, steps[0][afg1_step_num].b.TLevel >> 2);
 
   // Set AFG1 reference out value
-  if (gSequencerMode_1 == SEQUENCER_MODE_RUN) {
+  if (afg1_mode == MODE_RUN) {
     // (Slopes down from 1023 to 0 over the course of the step)
     MAX5135_DAC_send(EXT_DAC_CH_1,
-        1023 - (unsigned int) ((1023.0 / (float) StepWidth_1) * ((float) gStepWidth_1)));
+        1023 - (unsigned int) ((1023.0 / (float) StepWidth_1) * ((float) afg1_step_cnt)));
   } else {
     // No reference output when not running
     MAX5135_DAC_send(EXT_DAC_CH_1, 0);
@@ -1124,104 +1018,104 @@ void TIM5_IRQHandler() {
   unsigned long OutputVoltage = 0;
   unsigned char doPulses = 0;
 
-  StepWidth_2 = GetStepWidth(1, gSequenceStepNumber_2);
+  StepWidth_2 = GetStepWidth(1, afg2_step_num);
   TIM5->PSC = (uint16_t) (
-      ((((AddData[ADC_TIMEMULTIPLY_Ch_2])*3.5)
-          / CalConstants[ADC_TIMEMULTIPLY_Ch_2])+0.5)
+      ((((add_data[ADC_TIMEMULTIPLY_Ch_2])*3.5)
+          / cal_constants[ADC_TIMEMULTIPLY_Ch_2])+0.5)
           * STEP_TIMER_PRESCALER);
 
-  if (gStepWidth_2 < StepWidth_2) {
-    gStepWidth_2 += 1;
+  if (afg2_step_cnt < StepWidth_2) {
+    afg2_step_cnt += 1;
   };
 
-  if ((gStepWidth_2 >= StepWidth_2)) {
-    PreviousStep_2 = CurrentStep_2;
-    gStepWidth_2 = 0;
+  if ((afg2_step_cnt >= StepWidth_2)) {
+    afg2_prev_step_level = afg2_step_level;
+    afg2_step_cnt = 0;
 
-    if ((gSequencerMode_2 == SEQUENCER_MODE_ADVANCE)) {
-      gSequencerMode_2 =  SEQUENCER_MODE_STOP;
+    if ((afg2_mode == MODE_ADVANCE)) {
+      afg2_mode =  MODE_STOP;
     };
-    if (Steps[1][gSequenceStepNumber_2].b.OpModeSTOP) {
-      gPrevSequencerMode_2 = gSequencerMode_2;
-      gSequencerMode_2 = SEQUENCER_MODE_STOP;
+    if (steps[1][afg2_step_num].b.OpModeSTOP) {
+      afg2_prev_mode = afg2_mode;
+      afg2_mode = MODE_STOP;
     };
 
-    if (Steps[1][gSequenceStepNumber_2].b.OpModeENABLE
-        && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z) {
+    if (steps[1][afg2_step_num].b.OpModeENABLE
+        && afg2_mode != MODE_WAIT_HI_Z) {
       if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0)) {
-        gPrevSequencerMode_2 = gSequencerMode_2;
-        gSequencerMode_2 = SEQUENCER_MODE_WAIT_HI_Z;
+        afg2_prev_mode = afg2_mode;
+        afg2_mode = MODE_WAIT_HI_Z;
       };
     };
 
-    if ((Steps[1][gSequenceStepNumber_2].b.OpModeSUSTAIN
-        && gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z)) {
+    if ((steps[1][afg2_step_num].b.OpModeSUSTAIN
+        && afg2_mode != MODE_STAY_HI_Z)) {
       if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1)) {
-        gPrevSequencerMode_2 = gSequencerMode_2;
-        gSequencerMode_2 = SEQUENCER_MODE_STAY_HI_Z;
+        afg2_prev_mode = afg2_mode;
+        afg2_mode = MODE_STAY_HI_Z;
         InitStart_2_SignalTimer();
       }
     };
 
-    if (gSequencerMode_2 == SEQUENCER_MODE_RUN) {
-      gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+    if (afg2_mode == MODE_RUN) {
+      afg2_step_num = GetNextStep(1, afg2_step_num);
       doPulses = 1;
     };
 
-    if (gSequencerMode_2 == SEQUENCER_MODE_STOP && swing2) {
+    if (afg2_mode == MODE_STOP && swing2) {
       doPulses = 1;
     }
 
-    if (gSequencerMode_2 == SEQUENCER_MODE_ADVANCE) {
+    if (afg2_mode == MODE_ADVANCE) {
       // Advance to the next step
-      gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+      afg2_step_num = GetNextStep(1, afg2_step_num);
       doPulses = 1;
     };
   }
 
-  if (gSequencerMode_2 == SEQUENCER_MODE_WAIT) {
-    if (gSequenceStepNumber_2 != (unsigned int) (pots_step[1] - 1)) {
+  if (afg2_mode == MODE_WAIT) {
+    if (afg2_step_num != (unsigned int) (pots_step[1] - 1)) {
       // Sample and hold current voltage output value
-      PreviousStep_2 = CurrentStep_2;
-      gSequenceStepNumber_2 = (unsigned int) (pots_step[1]-1);
+      afg2_prev_step_level = afg2_step_level;
+      afg2_step_num = (unsigned int) (pots_step[1]-1);
       // Reset step width
-      gStepWidth_2 = 0;
+      afg2_step_cnt = 0;
       doPulses = 1;
     }
   };
 
-  if (gSequencerMode_2 == SEQUENCER_MODE_WAIT_STROBE) {
+  if (afg2_mode == MODE_WAIT_STROBE) {
     // What does this do?
-    gSequenceStepNumber_2 = (unsigned int) (pots_step[1]-1);
-    gSequencerMode_2 = gPrevSequencerMode_2;
+    afg2_step_num = (unsigned int) (pots_step[1]-1);
+    afg2_mode = afg2_prev_mode;
   }
 
-  if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
-    DisplayUpdateFlags.b.MainDisplay = 1;
-    DisplayUpdateFlags.b.StepsDisplay = 1;
+  if (display_mode == DISPLAY_MODE_VIEW_2) {
+    display_update_flags.b.MainDisplay = 1;
+    display_update_flags.b.StepsDisplay = 1;
   };
 
-  OutputVoltage = GetStepVoltage(1, gSequenceStepNumber_2);
+  OutputVoltage = GetStepVoltage(1, afg2_step_num);
 
-  if (Steps[1][gSequenceStepNumber_2].b.Sloped ) {
-    if (PreviousStep_2 >= OutputVoltage) {
-      deltaVoltage = (float) (PreviousStep_2 - OutputVoltage) / StepWidth_2;
-      OutputVoltage = PreviousStep_2 - (unsigned int) (deltaVoltage * gStepWidth_2);
-    } else if (OutputVoltage > PreviousStep_2) {
+  if (steps[1][afg2_step_num].b.Sloped ) {
+    if (afg2_prev_step_level >= OutputVoltage) {
+      deltaVoltage = (float) (afg2_prev_step_level - OutputVoltage) / StepWidth_2;
+      OutputVoltage = afg2_prev_step_level - (unsigned int) (deltaVoltage * afg2_step_cnt);
+    } else if (OutputVoltage > afg2_prev_step_level) {
       // Slope up
-      deltaVoltage =  (float) (OutputVoltage - PreviousStep_2) / StepWidth_2;
-      OutputVoltage = PreviousStep_2 + (unsigned int) (deltaVoltage * gStepWidth_2);
+      deltaVoltage =  (float) (OutputVoltage - afg2_prev_step_level) / StepWidth_2;
+      OutputVoltage = afg2_prev_step_level + (unsigned int) (deltaVoltage * afg2_step_cnt);
     }
   }
 
-  CurrentStep_2 = OutputVoltage;
+  afg2_step_level = OutputVoltage;
   DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
 
-  MAX5135_DAC_send(EXT_DAC_CH_2, Steps[1][gSequenceStepNumber_2].b.TLevel >> 2);
+  MAX5135_DAC_send(EXT_DAC_CH_2, steps[1][afg2_step_num].b.TLevel >> 2);
 
-  if (gSequencerMode_2 == SEQUENCER_MODE_RUN) {
+  if (afg2_mode == MODE_RUN) {
     MAX5135_DAC_send(EXT_DAC_CH_3,
-        1023 - (unsigned int) (((float) 0x3FF/ (float) StepWidth_2) * ((float) gStepWidth_2)));
+        1023 - (unsigned int) (((float) 0x3FF/ (float) StepWidth_2) * ((float) afg2_step_cnt)));
   } else {
     MAX5135_DAC_send(EXT_DAC_CH_3, 0);
   }
@@ -1234,13 +1128,13 @@ void TIM5_IRQHandler() {
 };
 
 
-void DoStepOutputPulses1() {
+static inline void DoStepOutputPulses1() {
   PULSE_LED_I_ALL_ON;
 
-  if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
+  if (steps[0][afg1_step_num].b.OutputPulse1) {
     PULSE_LED_I_1_ON;
   };
-  if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
+  if (steps[0][afg1_step_num].b.OutputPulse2) {
     PULSE_LED_I_2_ON;
   };
 
@@ -1248,13 +1142,13 @@ void DoStepOutputPulses1() {
   TIM_SetCounter(TIM14, 0x00);
 }
 
-void DoStepOutputPulses2() {
+static inline void DoStepOutputPulses2() {
   PULSE_LED_II_ALL_ON;
 
-  if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
+  if (steps[1][afg2_step_num].b.OutputPulse1) {
     PULSE_LED_II_1_ON;
   };
-  if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
+  if (steps[1][afg2_step_num].b.OutputPulse2) {
     PULSE_LED_II_2_ON;
   };
 
@@ -1310,10 +1204,10 @@ void mTimersInit(void)
 
   SCB->AIRCR = AIRCR_VECTKEY_MASK | NVIC_PriorityGroup_0;
 
-  gStepWidth_1 = 8;
-  gStepWidth_2 = 8;
-  gFullStepWidth_1 = 8;
-  gFullStepWidth_2 = 8;
+  afg1_step_cnt = 8;
+  afg2_step_cnt = 8;
+  afg1_step_width = 8;
+  afg2_step_width = 8;
 
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM14, ENABLE);
 
@@ -1378,41 +1272,32 @@ void TIM3_IRQHandler()
 {
   TIM3->SR = (uint16_t) ~TIM_IT_Update;
 
-  if ( (gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z)
+  if ( (afg1_mode == MODE_WAIT_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0) ) {
   }
-  else if((gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z)
+  else if((afg1_mode == MODE_WAIT_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1))
   {
-    gSequencerMode_1 = SEQUENCER_MODE_RUN;
-    gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+    afg1_mode = MODE_RUN;
+    afg1_step_num = GetNextStep(0, afg1_step_num);
     TIM3->CR1 &= ~TIM_CR1_CEN;
   }
 
-  if((gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z)
+  if((afg1_mode == MODE_STAY_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1))
   {
 
 
   }
-  else if((gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z)
+  else if((afg1_mode == MODE_STAY_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0))
   {
 
 
-    gSequencerMode_1 = SEQUENCER_MODE_RUN;
-    gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+    afg1_mode = MODE_RUN;
+    afg1_step_num = GetNextStep(0, afg1_step_num);
     TIM3->CR1 &= ~TIM_CR1_CEN;
-    PULSE_LED_I_ALL_ON;
-    if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-      PULSE_LED_I_1_ON;
-    };
-    if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-      PULSE_LED_I_2_ON;
-    };
-
-    TIM_Cmd(TIM14, ENABLE);
-    TIM_SetCounter(TIM14, 0x00);
+    DoStepOutputPulses1();
   }
 };
 
@@ -1421,38 +1306,28 @@ void TIM7_IRQHandler()
 {
   TIM7->SR = (uint16_t) ~TIM_IT_Update;
 
-  if ( (gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z)
+  if ( (afg2_mode == MODE_WAIT_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0) ) {
   }
-  else if((gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z)
+  else if((afg2_mode == MODE_WAIT_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1))
   {
-    gSequencerMode_2 = SEQUENCER_MODE_RUN;
-    gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+    afg2_mode = MODE_RUN;
+    afg2_step_num = GetNextStep(1, afg2_step_num);
     TIM7->CR1 &= ~TIM_CR1_CEN;
   }
 
-  if((gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z)
+  if((afg2_mode == MODE_STAY_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1))
   {
   }
-  else if((gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z)
+  else if((afg2_mode == MODE_STAY_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0))
   {
-    gSequencerMode_2 = SEQUENCER_MODE_RUN;
-    gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+    afg2_mode = MODE_RUN;
+    afg2_step_num = GetNextStep(1, afg2_step_num);
     TIM7->CR1 &= ~TIM_CR1_CEN;
-    PULSE_LED_II_ALL_ON;
-
-    if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-      PULSE_LED_II_1_ON;
-    };
-    if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-      PULSE_LED_II_2_ON;
-    };
-
-    TIM_Cmd(TIM8, ENABLE);
-    TIM_SetCounter(TIM8, 0x00);
+    DoStepOutputPulses2();
   }
 };
 
@@ -1508,44 +1383,44 @@ void TIM6_DAC_IRQHandler()
     {
       //Clear section 1 state
 
-      Steps[0][0].val[3] = 0x00;
-      Steps[0][0].val[4] = 0x00;
-      Steps[0][0].val[5] = 0x00;
-      Steps[0][0].b.TimeRange_p3 = 1;
-      Steps[0][0].b.FullRange = 1;
+      steps[0][0].val[3] = 0x00;
+      steps[0][0].val[4] = 0x00;
+      steps[0][0].val[5] = 0x00;
+      steps[0][0].b.TimeRange_p3 = 1;
+      steps[0][0].b.FullRange = 1;
 
       for(i=0; i<16; i++)
       {
-        Steps[0][i] = Steps[0][0];
-        Steps[0][i+16] = Steps[0][0];
+        steps[0][i] = steps[0][0];
+        steps[0][i+16] = steps[0][0];
       }
-      gSequencerMode_1 = SEQUENCER_MODE_STOP;
-      gSequenceStepNumber_1 = 0;
+      afg1_mode = MODE_STOP;
+      afg1_step_num = 0;
     }
     else if(clear_counter2 == 30)
     {
       //Clear section 2 state
 
-      Steps[1][0].val[3] = 0x00;
-      Steps[1][0].val[4] = 0x00;
-      Steps[1][0].val[5] = 0x00;
-      Steps[1][0].b.TimeRange_p3 = 1;
-      Steps[1][0].b.FullRange = 1;
+      steps[1][0].val[3] = 0x00;
+      steps[1][0].val[4] = 0x00;
+      steps[1][0].val[5] = 0x00;
+      steps[1][0].b.TimeRange_p3 = 1;
+      steps[1][0].b.FullRange = 1;
       for(i=0; i<16; i++)
       {
-        Steps[1][i] = Steps[1][0];
-        Steps[1][i+16] = Steps[1][0];
+        steps[1][i] = steps[1][0];
+        steps[1][i+16] = steps[1][0];
       };
-      gSequencerMode_2 = SEQUENCER_MODE_STOP;
-      gSequenceStepNumber_2 = 0;
+      afg2_mode = MODE_STOP;
+      afg2_step_num = 0;
     };
 
     clear_counter1 = 0;
     clear_counter2 = 0;
 
     //If not in view mode switch in it
-    if (gDisplayMode == DISPLAY_MODE_LOAD_1 || gDisplayMode == DISPLAY_MODE_SAVE_1) gDisplayMode = DISPLAY_MODE_VIEW_1;
-    if (gDisplayMode == DISPLAY_MODE_LOAD_2 || gDisplayMode == DISPLAY_MODE_SAVE_2) gDisplayMode = DISPLAY_MODE_VIEW_2;
+    if (display_mode == DISPLAY_MODE_LOAD_1 || display_mode == DISPLAY_MODE_SAVE_1) display_mode = DISPLAY_MODE_VIEW_1;
+    if (display_mode == DISPLAY_MODE_LOAD_2 || display_mode == DISPLAY_MODE_SAVE_2) display_mode = DISPLAY_MODE_VIEW_2;
   };
 };
 
@@ -1653,41 +1528,41 @@ unsigned char keyb_proc(uButtons * key)
   else max_step = 15;
 
   /* Determine step num for different DisplayModes */
-  if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
-    StepNum = gSequenceStepNumber_1;
+  if (display_mode == DISPLAY_MODE_VIEW_1) {
+    StepNum = afg1_step_num;
     Section = 0;
   };
-  if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
-    StepNum = gSequenceStepNumber_2;
+  if (display_mode == DISPLAY_MODE_VIEW_2) {
+    StepNum = afg2_step_num;
     Section = 1;
   };
-  if (gDisplayMode == DISPLAY_MODE_EDIT_1) {
-    StepNum = gEditModeStepNum;
+  if (display_mode == DISPLAY_MODE_EDIT_1) {
+    StepNum = edit_mode_step_num;
     Section = 0;
   };
-  if (gDisplayMode == DISPLAY_MODE_EDIT_2) {
-    StepNum = gEditModeStepNum;
-    Section = 1;
-  };
-
-  if (gDisplayMode == DISPLAY_MODE_SAVE_1) {
-    StepNum = gEditModeStepNum;
-    Section = 0;
-  };
-  if (gDisplayMode == DISPLAY_MODE_SAVE_2) {
-    StepNum = gEditModeStepNum;
-    Section = 1;
-  };
-  if (gDisplayMode == DISPLAY_MODE_LOAD_1) {
-    StepNum = gEditModeStepNum;
-    Section = 0;
-  };
-  if (gDisplayMode == DISPLAY_MODE_LOAD_2) {
-    StepNum = gEditModeStepNum;
+  if (display_mode == DISPLAY_MODE_EDIT_2) {
+    StepNum = edit_mode_step_num;
     Section = 1;
   };
 
-  tmpStep = Steps[Section][StepNum];
+  if (display_mode == DISPLAY_MODE_SAVE_1) {
+    StepNum = edit_mode_step_num;
+    Section = 0;
+  };
+  if (display_mode == DISPLAY_MODE_SAVE_2) {
+    StepNum = edit_mode_step_num;
+    Section = 1;
+  };
+  if (display_mode == DISPLAY_MODE_LOAD_1) {
+    StepNum = edit_mode_step_num;
+    Section = 0;
+  };
+  if (display_mode == DISPLAY_MODE_LOAD_2) {
+    StepNum = edit_mode_step_num;
+    Section = 1;
+  };
+
+  tmpStep = steps[Section][StepNum];
 
 
   /* Middle section */
@@ -1792,17 +1667,17 @@ unsigned char keyb_proc(uButtons * key)
     tmpStep.b.OpModeSTOP = 1;
     tmpStep.b.OpModeENABLE = 0;
     tmpStep.b.OpModeSUSTAIN = 0;
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_1 || gDisplayMode == DISPLAY_MODE_EDIT_1) && gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z) {
-      gSequencerMode_1 = SEQUENCER_MODE_STOP;
+    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_STAY_HI_Z) {
+      afg1_mode = MODE_STOP;
     };
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_2 || gDisplayMode == DISPLAY_MODE_EDIT_2) && gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z) {
-      gSequencerMode_2 = SEQUENCER_MODE_STOP;
+    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_STAY_HI_Z) {
+      afg2_mode = MODE_STOP;
     };
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_1 || gDisplayMode == DISPLAY_MODE_EDIT_1) && gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z) {
-      gSequencerMode_1 = SEQUENCER_MODE_STOP;
+    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_WAIT_HI_Z) {
+      afg1_mode = MODE_STOP;
     };
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_2 || gDisplayMode == DISPLAY_MODE_EDIT_2) && gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z) {
-      gSequencerMode_2 = SEQUENCER_MODE_STOP;
+    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_WAIT_HI_Z) {
+      afg2_mode = MODE_STOP;
     };
   };
 
@@ -1815,21 +1690,21 @@ unsigned char keyb_proc(uButtons * key)
     tmpStep.b.OpModeSUSTAIN = 1;
     tmpStep.b.OpModeSTOP = 0;
     tmpStep.b.OpModeENABLE = 0;
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_1 || gDisplayMode == DISPLAY_MODE_EDIT_1) && gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z) {
-      gSequencerMode_1 = gPrevSequencerMode_1;
+    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_WAIT_HI_Z) {
+      afg1_mode = afg1_prev_mode;
     };
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_2 || gDisplayMode == DISPLAY_MODE_EDIT_2) && gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z) {
-      gSequencerMode_2 = gPrevSequencerMode_2;
+    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_WAIT_HI_Z) {
+      afg2_mode = afg2_prev_mode;
     };
   };
 
   if ( !key->b.SustainOff ) {
     tmpStep.b.OpModeSUSTAIN = 0;
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_1 || gDisplayMode == DISPLAY_MODE_EDIT_1) && gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z) {
-      gSequencerMode_1 = gPrevSequencerMode_1;
+    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_STAY_HI_Z) {
+      afg1_mode = afg1_prev_mode;
     };
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_2 || gDisplayMode == DISPLAY_MODE_EDIT_2) && gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z) {
-      gSequencerMode_2 = gPrevSequencerMode_2;
+    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_STAY_HI_Z) {
+      afg2_mode = afg2_prev_mode;
     };
   };
 
@@ -1837,21 +1712,21 @@ unsigned char keyb_proc(uButtons * key)
     tmpStep.b.OpModeENABLE = 1;
     tmpStep.b.OpModeSTOP = 0;
     tmpStep.b.OpModeSUSTAIN = 0;
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_1 || gDisplayMode == DISPLAY_MODE_EDIT_1) && gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z) {
-      gSequencerMode_1 = gPrevSequencerMode_1;
+    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_STAY_HI_Z) {
+      afg1_mode = afg1_prev_mode;
     };
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_2 || gDisplayMode == DISPLAY_MODE_EDIT_2) && gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z) {
-      gSequencerMode_2 = gPrevSequencerMode_2;
+    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_STAY_HI_Z) {
+      afg2_mode = afg2_prev_mode;
     };
   };
 
   if ( !key->b.EnableOff ) {
     tmpStep.b.OpModeENABLE = 0;
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_1 || gDisplayMode == DISPLAY_MODE_EDIT_1) && gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z) {
-      gSequencerMode_1 = gPrevSequencerMode_1;
+    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_WAIT_HI_Z) {
+      afg1_mode = afg1_prev_mode;
     };
-    if ((gDisplayMode == DISPLAY_MODE_VIEW_2 || gDisplayMode == DISPLAY_MODE_EDIT_2) && gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z) {
-      gSequencerMode_2 = gPrevSequencerMode_2;
+    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_WAIT_HI_Z) {
+      afg2_mode = afg2_prev_mode;
     };
   };
 
@@ -1912,70 +1787,70 @@ unsigned char keyb_proc(uButtons * key)
   if (!key->b.ClearUp)  {
     //Init timer to detect long press (clear comman)
     InitClear_Timer();
-    if (gDisplayMode == DISPLAY_MODE_LOAD_1) {
+    if (display_mode == DISPLAY_MODE_LOAD_1) {
       //if in load mode, restore sequence number gEditModeStepNum
-      LoadSequence(gEditModeStepNum);
-      gKeysNotValid = 1;
-      gDisplayMode = DISPLAY_MODE_VIEW_1;
+      LoadSequence(edit_mode_step_num);
+      keys_not_valid = 1;
+      display_mode = DISPLAY_MODE_VIEW_1;
 
-      gPrevSequencerMode_1 = gSequencerMode_1;
-      gSequenceStepNumber_1 = 0;
-      gSequencerMode_1 = SEQUENCER_MODE_STOP;
+      afg1_prev_mode = afg1_mode;
+      afg1_step_num = 0;
+      afg1_mode = MODE_STOP;
     }
-    else if (gDisplayMode == DISPLAY_MODE_LOAD_2) {
+    else if (display_mode == DISPLAY_MODE_LOAD_2) {
       //if in load mode, restore sequence number gEditModeStepNum
-      LoadSequence(gEditModeStepNum);
-      gKeysNotValid = 1;
-      gDisplayMode = DISPLAY_MODE_VIEW_2;
+      LoadSequence(edit_mode_step_num);
+      keys_not_valid = 1;
+      display_mode = DISPLAY_MODE_VIEW_2;
 
-      gPrevSequencerMode_2 = gSequencerMode_2;
-      gSequenceStepNumber_2 = 0;
-      gSequencerMode_2 = SEQUENCER_MODE_STOP;
+      afg2_prev_mode = afg2_mode;
+      afg2_step_num = 0;
+      afg2_mode = MODE_STOP;
     }
 
-    else if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
+    else if (display_mode == DISPLAY_MODE_VIEW_1) {
       //if in view mode switch to load mode
-      gDisplayMode = DISPLAY_MODE_LOAD_1;
-      gEditModeStepNum = 0;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
-      DisplayUpdateFlags.b.MainDisplay = 1;
+      display_mode = DISPLAY_MODE_LOAD_1;
+      edit_mode_step_num = 0;
+      display_update_flags.b.StepsDisplay = 1;
+      display_update_flags.b.MainDisplay = 1;
     }
-    else if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
+    else if (display_mode == DISPLAY_MODE_VIEW_2) {
       //if in view mode switch to load mode
-      gDisplayMode = DISPLAY_MODE_LOAD_2;
-      gEditModeStepNum = 0;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
-      DisplayUpdateFlags.b.MainDisplay = 1;
+      display_mode = DISPLAY_MODE_LOAD_2;
+      edit_mode_step_num = 0;
+      display_update_flags.b.StepsDisplay = 1;
+      display_update_flags.b.MainDisplay = 1;
     };
   };
 
   if (!key->b.ClearDown)  {
     InitClear_Timer();
-    if (gDisplayMode == DISPLAY_MODE_SAVE_1) {
+    if (display_mode == DISPLAY_MODE_SAVE_1) {
       //if in save mode - save sequence to memory cell gEditModeStepNum
-      SaveSequence(gEditModeStepNum);
-      gDisplayMode = DISPLAY_MODE_VIEW_1;
+      SaveSequence(edit_mode_step_num);
+      display_mode = DISPLAY_MODE_VIEW_1;
     }
-    else if (gDisplayMode == DISPLAY_MODE_SAVE_2) {
+    else if (display_mode == DISPLAY_MODE_SAVE_2) {
       //if in save mode - save sequence to memory cell gEditModeStepNum
-      SaveSequence(gEditModeStepNum);
-      gDisplayMode = DISPLAY_MODE_VIEW_2;
+      SaveSequence(edit_mode_step_num);
+      display_mode = DISPLAY_MODE_VIEW_2;
     }
 
-    else if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
+    else if (display_mode == DISPLAY_MODE_VIEW_1) {
       //if in view mode - switch to save mode
-      gDisplayMode = DISPLAY_MODE_SAVE_1;
-      gEditModeStepNum = 0;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
-      DisplayUpdateFlags.b.MainDisplay = 1;
+      display_mode = DISPLAY_MODE_SAVE_1;
+      edit_mode_step_num = 0;
+      display_update_flags.b.StepsDisplay = 1;
+      display_update_flags.b.MainDisplay = 1;
     }
 
-    else if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
+    else if (display_mode == DISPLAY_MODE_VIEW_2) {
       //if in view mode - switch to save mode
-      gDisplayMode = DISPLAY_MODE_SAVE_2;
-      gEditModeStepNum = 0;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
-      DisplayUpdateFlags.b.MainDisplay = 1;
+      display_mode = DISPLAY_MODE_SAVE_2;
+      edit_mode_step_num = 0;
+      display_update_flags.b.StepsDisplay = 1;
+      display_update_flags.b.MainDisplay = 1;
 
     };
   };
@@ -1984,56 +1859,56 @@ unsigned char keyb_proc(uButtons * key)
 
   //switch to edit mode
   if ( !key->b.StepLeft ) {
-    if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
-      gDisplayMode = DISPLAY_MODE_EDIT_1;
-      gEditModeStepNum = 1;
+    if (display_mode == DISPLAY_MODE_VIEW_1) {
+      display_mode = DISPLAY_MODE_EDIT_1;
+      edit_mode_step_num = 1;
     };
-    if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
-      gDisplayMode = DISPLAY_MODE_EDIT_2;
-      gEditModeStepNum = 1;
+    if (display_mode == DISPLAY_MODE_VIEW_2) {
+      display_mode = DISPLAY_MODE_EDIT_2;
+      edit_mode_step_num = 1;
     };
-    if ( (gDisplayMode == DISPLAY_MODE_EDIT_1) ||
-        (gDisplayMode == DISPLAY_MODE_EDIT_2) ) {
-      if (gEditModeStepNum > 0) {
-        if(counterL == 0) gEditModeStepNum--;
+    if ( (display_mode == DISPLAY_MODE_EDIT_1) ||
+        (display_mode == DISPLAY_MODE_EDIT_2) ) {
+      if (edit_mode_step_num > 0) {
+        if(counterL == 0) edit_mode_step_num--;
         //if long press switch to repeate selection
         else if(counterL > 120) {
           counterL = 100;
-          gEditModeStepNum--;
+          edit_mode_step_num--;
         }
         counterL++;
-        DisplayUpdateFlags.b.MainDisplay = 1;
-        DisplayUpdateFlags.b.StepsDisplay = 1;
+        display_update_flags.b.MainDisplay = 1;
+        display_update_flags.b.StepsDisplay = 1;
       } else {
-        if(counterL == 0) gEditModeStepNum = max_step;
+        if(counterL == 0) edit_mode_step_num = max_step;
         else if(counterL > 120)	{
           counterL = 100;
-          gEditModeStepNum = max_step;
+          edit_mode_step_num = max_step;
         }
         counterL++;
         //gEditModeStepNum = max_step;
-        DisplayUpdateFlags.b.MainDisplay = 1;
-        DisplayUpdateFlags.b.StepsDisplay = 1;
+        display_update_flags.b.MainDisplay = 1;
+        display_update_flags.b.StepsDisplay = 1;
       };
     };
 
     //if in save or load mode left buttons select memory cell for save/recall
-    if ( (gDisplayMode == DISPLAY_MODE_SAVE_1) || (gDisplayMode == DISPLAY_MODE_SAVE_2) ||
-        (gDisplayMode == DISPLAY_MODE_LOAD_1) || (gDisplayMode == DISPLAY_MODE_LOAD_2) ) {
-      if (gEditModeStepNum > 0) {
-        if(counterL == 0) gEditModeStepNum--;
+    if ( (display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
+        (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2) ) {
+      if (edit_mode_step_num > 0) {
+        if(counterL == 0) edit_mode_step_num--;
         else if(counterL > 120) {
           counterL = 100;
-          gEditModeStepNum--;
+          edit_mode_step_num--;
         }
         counterL++;
-        DisplayUpdateFlags.b.StepsDisplay = 1;
+        display_update_flags.b.StepsDisplay = 1;
       } else {
         if(counterL == 0)
         {
           if(!Is_Expander_Present())
           {
-            gEditModeStepNum = 15;
+            edit_mode_step_num = 15;
             if(bank == 1)
             {
               bank = 2;
@@ -2043,13 +1918,13 @@ unsigned char keyb_proc(uButtons * key)
               bank = 1;
             }
           }
-          else gEditModeStepNum = 31;
+          else edit_mode_step_num = 31;
         }
         else if(counterL > 120) {
           counterL = 100;
           if(!Is_Expander_Present())
           {
-            gEditModeStepNum = 15;
+            edit_mode_step_num = 15;
             if(bank == 1)
             {
               bank = 2;
@@ -2059,11 +1934,11 @@ unsigned char keyb_proc(uButtons * key)
               bank = 1;
             }
           }
-          else gEditModeStepNum = 31;
+          else edit_mode_step_num = 31;
         }
         counterL++;
 
-        DisplayUpdateFlags.b.StepsDisplay = 1;
+        display_update_flags.b.StepsDisplay = 1;
       };
     };
   }
@@ -2073,53 +1948,53 @@ unsigned char keyb_proc(uButtons * key)
   };
 
   if ( !key->b.StepRight ) {
-    if (gDisplayMode == DISPLAY_MODE_VIEW_1) {
-      gDisplayMode = DISPLAY_MODE_EDIT_1;
-      gEditModeStepNum = max_step;
+    if (display_mode == DISPLAY_MODE_VIEW_1) {
+      display_mode = DISPLAY_MODE_EDIT_1;
+      edit_mode_step_num = max_step;
     };
-    if (gDisplayMode == DISPLAY_MODE_VIEW_2) {
-      gDisplayMode = DISPLAY_MODE_EDIT_2;
-      gEditModeStepNum = max_step;
+    if (display_mode == DISPLAY_MODE_VIEW_2) {
+      display_mode = DISPLAY_MODE_EDIT_2;
+      edit_mode_step_num = max_step;
     };
-    if ( (gDisplayMode == DISPLAY_MODE_EDIT_1) ||
-        (gDisplayMode == DISPLAY_MODE_EDIT_2) ) {
-      if (gEditModeStepNum < max_step) {
-        if(counterR == 0) gEditModeStepNum++;
+    if ( (display_mode == DISPLAY_MODE_EDIT_1) ||
+        (display_mode == DISPLAY_MODE_EDIT_2) ) {
+      if (edit_mode_step_num < max_step) {
+        if(counterR == 0) edit_mode_step_num++;
         else if (counterR > 120)//was 600
         {
           counterR = 100;//was 500
-          gEditModeStepNum++;
+          edit_mode_step_num++;
         }
       } else {
-        if(counterR == 0) gEditModeStepNum = 0;
+        if(counterR == 0) edit_mode_step_num = 0;
         else if(counterR > 120)
         {
           counterR = 100;
-          gEditModeStepNum = 0;
+          edit_mode_step_num = 0;
         }
       }
       counterR++;
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
     }
 
     //if in save or load mode right buttons select memory cell for save/recall
-    if ( (gDisplayMode == DISPLAY_MODE_SAVE_1) || (gDisplayMode == DISPLAY_MODE_SAVE_2) ||
-        (gDisplayMode == DISPLAY_MODE_LOAD_1) || (gDisplayMode == DISPLAY_MODE_LOAD_2)) {
-      if (gEditModeStepNum < max_step) {
-        if(counterR == 0) gEditModeStepNum++;
+    if ( (display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
+        (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2)) {
+      if (edit_mode_step_num < max_step) {
+        if(counterR == 0) edit_mode_step_num++;
         else if(counterR > 120) {
           counterR = 100;
-          gEditModeStepNum++;
+          edit_mode_step_num++;
         }
         counterR++;
-        DisplayUpdateFlags.b.StepsDisplay = 1;
+        display_update_flags.b.StepsDisplay = 1;
       } else {
         if(counterR == 0)
         {
           if(!Is_Expander_Present())
           {
-            gEditModeStepNum = 0;
+            edit_mode_step_num = 0;
             if(bank == 1)
             {
               bank = 2;
@@ -2132,14 +2007,14 @@ unsigned char keyb_proc(uButtons * key)
           }
           else
           {
-            gEditModeStepNum = 0;
+            edit_mode_step_num = 0;
           }
         }
         else if(counterR > 120) {
           counterR = 100;
           if(!Is_Expander_Present())
           {
-            gEditModeStepNum = 0;
+            edit_mode_step_num = 0;
             if(bank == 1)
             {
               bank = 2;
@@ -2152,12 +2027,12 @@ unsigned char keyb_proc(uButtons * key)
           }
           else
           {
-            gEditModeStepNum = 0;
+            edit_mode_step_num = 0;
           }
         }
         counterR++;
 
-        DisplayUpdateFlags.b.StepsDisplay = 1;
+        display_update_flags.b.StepsDisplay = 1;
       };
     };
   }
@@ -2168,18 +2043,18 @@ unsigned char keyb_proc(uButtons * key)
   key_locked = 1;
 
   //Sections 1/2
-  if (gKeysNotValid == 0) {
+  if (keys_not_valid == 0) {
 
     if (!key->b.StageAddress1Display) {
-      if (gDisplayMode != DISPLAY_MODE_VIEW_1) {
-        gDisplayMode = DISPLAY_MODE_VIEW_1;
+      if (display_mode != DISPLAY_MODE_VIEW_1) {
+        display_mode = DISPLAY_MODE_VIEW_1;
       };
     };
 
 
     if (!key->b.StageAddress2Display) {
-      if (gDisplayMode != DISPLAY_MODE_VIEW_2) {
-        gDisplayMode = DISPLAY_MODE_VIEW_2;
+      if (display_mode != DISPLAY_MODE_VIEW_2) {
+        display_mode = DISPLAY_MODE_VIEW_2;
         key_locked = 0;
       };
     };
@@ -2188,27 +2063,27 @@ unsigned char keyb_proc(uButtons * key)
 
 
   if ( (!key->b.StageAddress1Reset)  ) {
-    if(gSequencerMode_1 != SEQUENCER_MODE_WAIT)
+    if(afg1_mode != MODE_WAIT)
     {
-      gSequenceStepNumber_1 = 0;
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
-      if (gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z || gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z) {
-        gSequencerMode_1 = gPrevSequencerMode_1;
+      afg1_step_num = 0;
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
+      if (afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
+        afg1_mode = afg1_prev_mode;
       }
     };
   };
 
 
   if ( (!key->b.StageAddress2Reset)  ) {
-    if(gSequencerMode_2 != SEQUENCER_MODE_WAIT)
+    if(afg2_mode != MODE_WAIT)
     {
-      gSequenceStepNumber_2 = 0;
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
+      afg2_step_num = 0;
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
 
-      if (gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z || gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z) {
-        gSequencerMode_2 = gPrevSequencerMode_2;
+      if (afg2_mode == MODE_WAIT_HI_Z || afg2_mode == MODE_STAY_HI_Z) {
+        afg2_mode = afg2_prev_mode;
       }
     };
   }
@@ -2217,24 +2092,14 @@ unsigned char keyb_proc(uButtons * key)
   {
     swing1 = 0;
     strobe_banana_flag1 = 1;
-    gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
+    afg1_step_num = (unsigned int) (pots_step[0]-1);
 
-    if ( gDisplayMode == DISPLAY_MODE_VIEW_1 ) {
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
+    if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
     };
 
-    PULSE_LED_I_ALL_ON;
-
-    if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-      PULSE_LED_I_1_ON;
-    };
-    if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-      PULSE_LED_I_2_ON;
-    };
-
-    TIM_Cmd(TIM14, ENABLE);
-    TIM_SetCounter(TIM14, 0x00);
+    DoStepOutputPulses1();
   }
 
   if(!key->b.Empty5)
@@ -2246,27 +2111,17 @@ unsigned char keyb_proc(uButtons * key)
     int cnt1;
     for(cnt1=0; cnt1<31; cnt1++)
     {
-      Steps[0][cnt1].b.Swing = 1;
+      steps[0][cnt1].b.Swing = 1;
 
     }
 
-    gSequenceStepNumber_1 = (unsigned int) (pots_step[0]-1);
-    if ( gDisplayMode == DISPLAY_MODE_VIEW_1 ) {
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
+    afg1_step_num = (unsigned int) (pots_step[0]-1);
+    if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
     };
 
-    PULSE_LED_I_ALL_ON;
-
-    if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-      PULSE_LED_I_1_ON;
-    };
-    if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-      PULSE_LED_I_2_ON;
-    };
-
-    TIM_Cmd(TIM14, ENABLE);
-    TIM_SetCounter(TIM14, 0x00);
+    DoStepOutputPulses1();
   };
 
 
@@ -2275,23 +2130,13 @@ unsigned char keyb_proc(uButtons * key)
     strobe_banana_flag2 = 1;
 
 
-    gSequenceStepNumber_2 = (unsigned int) (pots_step[1]-1);
-    if ( gDisplayMode == DISPLAY_MODE_VIEW_2 ) {
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
+    afg2_step_num = (unsigned int) (pots_step[1]-1);
+    if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
     };
 
-    PULSE_LED_II_ALL_ON;
-
-    if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-      PULSE_LED_II_1_ON;
-    };
-    if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-      PULSE_LED_II_2_ON;
-    };
-
-    TIM_Cmd(TIM8, ENABLE);
-    TIM_SetCounter(TIM8, 0x00);
+    DoStepOutputPulses2();
   }
 
   if(!key->b.Empty2)
@@ -2300,33 +2145,22 @@ unsigned char keyb_proc(uButtons * key)
 
   }
 
-
   if ( (!key->b.StageAddress2PulseSelect)) {
     swing2 = 1;
 
     int cnt1;
     for(cnt1=0; cnt1<31; cnt1++)
     {
-      Steps[1][cnt1].b.Swing = 1;
+      steps[1][cnt1].b.Swing = 1;
 
     }
-    gSequenceStepNumber_2 = (unsigned int) (pots_step[1]-1);
-    if ( gDisplayMode == DISPLAY_MODE_VIEW_2 ) {
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
+    afg2_step_num = (unsigned int) (pots_step[1]-1);
+    if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
     };
 
-    PULSE_LED_II_ALL_ON;
-
-    if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-      PULSE_LED_II_1_ON;
-    };
-    if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-      PULSE_LED_II_2_ON;
-    };
-
-    TIM_Cmd(TIM8, ENABLE);
-    TIM_SetCounter(TIM8, 0x00);
+    DoStepOutputPulses2();
   };
 
 
@@ -2336,21 +2170,21 @@ unsigned char keyb_proc(uButtons * key)
     int cnt1;
     for(cnt1=0; cnt1<31; cnt1++)
     {
-      Steps[0][cnt1].b.Swing = 0;
+      steps[0][cnt1].b.Swing = 0;
 
     }
 
-    if (gSequencerMode_1 != SEQUENCER_MODE_WAIT) {
-      gPrevSequencerMode_1 = gSequencerMode_1;
-      gSequencerMode_1 = SEQUENCER_MODE_WAIT;
-      DisplayUpdateFlags.b.MainDisplay = 1;
+    if (afg1_mode != MODE_WAIT) {
+      afg1_prev_mode = afg1_mode;
+      afg1_mode = MODE_WAIT;
+      display_update_flags.b.MainDisplay = 1;
       key_locked = 0;
     };
   } else {
-    if (gSequencerMode_1 == SEQUENCER_MODE_WAIT) {
-      gSequencerMode_1 = gPrevSequencerMode_1;
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
+    if (afg1_mode == MODE_WAIT) {
+      afg1_mode = afg1_prev_mode;
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
       key_locked = 0;
     };
 
@@ -2362,21 +2196,21 @@ unsigned char keyb_proc(uButtons * key)
     int cnt1;
     for(cnt1=0; cnt1<31; cnt1++)
     {
-      Steps[1][cnt1].b.Swing = 0;
+      steps[1][cnt1].b.Swing = 0;
 
     }
 
-    if (gSequencerMode_2 != SEQUENCER_MODE_WAIT) {
-      gPrevSequencerMode_2 = gSequencerMode_2;
-      gSequencerMode_2 = SEQUENCER_MODE_WAIT;
-      DisplayUpdateFlags.b.MainDisplay = 1;
+    if (afg2_mode != MODE_WAIT) {
+      afg2_prev_mode = afg2_mode;
+      afg2_mode = MODE_WAIT;
+      display_update_flags.b.MainDisplay = 1;
       key_locked = 0;
     };
   } else {
-    if (gSequencerMode_2 == SEQUENCER_MODE_WAIT) {
-      gSequencerMode_2 = gPrevSequencerMode_2;
-      DisplayUpdateFlags.b.MainDisplay = 1;
-      DisplayUpdateFlags.b.StepsDisplay = 1;
+    if (afg2_mode == MODE_WAIT) {
+      afg2_mode = afg2_prev_mode;
+      display_update_flags.b.MainDisplay = 1;
+      display_update_flags.b.StepsDisplay = 1;
       key_locked = 0;
     };
   };
@@ -2388,31 +2222,21 @@ unsigned char keyb_proc(uButtons * key)
 
     //		if(advanced_counter_1 == 10)
     {
-      if(gSequencerMode_1 != SEQUENCER_MODE_WAIT)
+      if(afg1_mode != MODE_WAIT)
       {
-        if(gSequencerMode_1 == SEQUENCER_MODE_RUN)
+        if(afg1_mode == MODE_RUN)
         {
-          PreviousStep = GetStepVoltage(0, gSequenceStepNumber_1);
-          gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
-          gStepWidth_1 = 0;
+          afg1_prev_step_level = GetStepVoltage(0, afg1_step_num);
+          afg1_step_num = GetNextStep(0, afg1_step_num);
+          afg1_step_cnt = 0;
         }
         else{
-          if(gSequencerMode_1 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_1 != SEQUENCER_MODE_WAIT_HI_Z )(gPrevSequencerMode_1 = gSequencerMode_1);
+          if(afg1_mode != MODE_STAY_HI_Z && afg1_mode != MODE_WAIT_HI_Z )(afg1_prev_mode = afg1_mode);
 
-          gSequenceStepNumber_1 = GetNextStep(0, gSequenceStepNumber_1);
+          afg1_step_num = GetNextStep(0, afg1_step_num);
         }
-        gSequencerMode_1 = SEQUENCER_MODE_STOP;
-        PULSE_LED_I_ALL_ON;
-
-        if (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) {
-          PULSE_LED_I_1_ON;
-        };
-        if (Steps[0][gSequenceStepNumber_1].b.OutputPulse2) {
-          PULSE_LED_I_2_ON;
-        };
-
-        TIM_Cmd(TIM14, ENABLE);
-        TIM_SetCounter(TIM14, 0x00);
+        afg1_mode = MODE_STOP;
+        DoStepOutputPulses1();
       }	}
   }
 
@@ -2423,41 +2247,30 @@ unsigned char keyb_proc(uButtons * key)
     advanced_counter_2++;
     //		if(advanced_counter_2 == 10)
     {
-      if(gSequencerMode_2 != SEQUENCER_MODE_WAIT)
+      if(afg2_mode != MODE_WAIT)
       {
-        if(gSequencerMode_2 == SEQUENCER_MODE_RUN)
+        if(afg2_mode == MODE_RUN)
         {
-          PreviousStep_2 = GetStepVoltage(1, gSequenceStepNumber_2);
-          gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
-          gStepWidth_2 = 0;
+          afg2_prev_step_level = GetStepVoltage(1, afg2_step_num);
+          afg2_step_num = GetNextStep(1, afg2_step_num);
+          afg2_step_cnt = 0;
         }
         else
         {
-          if(gSequencerMode_2 != SEQUENCER_MODE_STAY_HI_Z && gSequencerMode_2 != SEQUENCER_MODE_WAIT_HI_Z )(gPrevSequencerMode_2 = gSequencerMode_2);
-          gSequenceStepNumber_2 = GetNextStep(1, gSequenceStepNumber_2);
+          if(afg2_mode != MODE_STAY_HI_Z && afg2_mode != MODE_WAIT_HI_Z )(afg2_prev_mode = afg2_mode);
+          afg2_step_num = GetNextStep(1, afg2_step_num);
         }
-        gSequencerMode_2 = SEQUENCER_MODE_STOP;
-        PULSE_LED_II_ALL_ON;
-
-        if (Steps[1][gSequenceStepNumber_2].b.OutputPulse1) {
-          PULSE_LED_II_1_ON;
-        };
-        if (Steps[1][gSequenceStepNumber_2].b.OutputPulse2) {
-          PULSE_LED_II_2_ON;
-        };
-
-        TIM_Cmd(TIM8, ENABLE);
-        TIM_SetCounter(TIM8, 0x00);
-
+        afg2_mode = MODE_STOP;
+        DoStepOutputPulses2();
       }
     }
   }else advanced_counter_2 = 0;
 
-  if (gKeysNotValid == 0) {
-    Steps[Section][StepNum] = tmpStep;
-    DisplayUpdateFlags.b.MainDisplay = 1;
+  if (keys_not_valid == 0) {
+    steps[Section][StepNum] = tmpStep;
+    display_update_flags.b.MainDisplay = 1;
   } else {
-    gKeysNotValid = 0;
+    keys_not_valid = 0;
   };
 
   return 1;
@@ -2478,53 +2291,53 @@ void UpdateModeSection(void)
   mLeds.value[2] = 0xFF;
   mLeds.value[3] = 0xFF;
 
-  if ((gSequencerMode_1 == SEQUENCER_MODE_RUN) ||
-      (gSequencerMode_1 == SEQUENCER_MODE_ADVANCE)) {
+  if ((afg1_mode == MODE_RUN) ||
+      (afg1_mode == MODE_ADVANCE)) {
     mLeds.b.Seq1Run = 0;
   };
-  if ( (gSequencerMode_1 == SEQUENCER_MODE_WAIT) ||
-      (gSequencerMode_1 == SEQUENCER_MODE_WAIT_HI_Z ) ||
-      (gSequencerMode_1 == SEQUENCER_MODE_STAY_HI_Z)  ) {
+  if ( (afg1_mode == MODE_WAIT) ||
+      (afg1_mode == MODE_WAIT_HI_Z ) ||
+      (afg1_mode == MODE_STAY_HI_Z)  ) {
     mLeds.b.Seq1Wait = 0;
   };
 
-  if (gSequencerMode_1 == SEQUENCER_MODE_STOP) {
+  if (afg1_mode == MODE_STOP) {
     mLeds.b.Seq1Stop = 0;
   };
 
-  if ((gSequencerMode_2 == SEQUENCER_MODE_RUN) ||
-      (gSequencerMode_2 == SEQUENCER_MODE_ADVANCE) ) {
+  if ((afg2_mode == MODE_RUN) ||
+      (afg2_mode == MODE_ADVANCE) ) {
     mLeds.b.Seq2Run = 0;
   };
-  if ((gSequencerMode_2 == SEQUENCER_MODE_WAIT) ||
-      (gSequencerMode_2 == SEQUENCER_MODE_WAIT_HI_Z ) ||
-      (gSequencerMode_2 == SEQUENCER_MODE_STAY_HI_Z) ) {
+  if ((afg2_mode == MODE_WAIT) ||
+      (afg2_mode == MODE_WAIT_HI_Z ) ||
+      (afg2_mode == MODE_STAY_HI_Z) ) {
     mLeds.b.Seq2Wait = 0;
   };
-  if (gSequencerMode_2 == SEQUENCER_MODE_STOP) {
+  if (afg2_mode == MODE_STOP) {
     mLeds.b.Seq2Stop = 0;
   };
 
 
   /* Determine step num for different DisplayModes*/
-  if ( gDisplayMode == DISPLAY_MODE_VIEW_1 ) {
-    StepNum = gSequenceStepNumber_1;
+  if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
+    StepNum = afg1_step_num;
     Section = 0;
   }
-  if ( gDisplayMode == DISPLAY_MODE_VIEW_2 ) {
-    StepNum = gSequenceStepNumber_2;
+  if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
+    StepNum = afg2_step_num;
     Section = 1;
   };
-  if ( gDisplayMode == DISPLAY_MODE_EDIT_1 ) {
-    StepNum = gEditModeStepNum;
+  if ( display_mode == DISPLAY_MODE_EDIT_1 ) {
+    StepNum = edit_mode_step_num;
     Section = 0;
   }
-  if ( gDisplayMode == DISPLAY_MODE_EDIT_2 ) {
-    StepNum = gEditModeStepNum;
+  if ( display_mode == DISPLAY_MODE_EDIT_2 ) {
+    StepNum = edit_mode_step_num;
     Section = 1;
   };
 
-  mStep = (uStep*) &Steps[Section][StepNum];
+  mStep = (uStep*) &steps[Section][StepNum];
 
   mLeds.b.VoltageFull  	= ~mStep->b.FullRange;
   mLeds.b.Voltage0     	= ~mStep->b.Voltage0;
@@ -2554,14 +2367,14 @@ void UpdateModeSection(void)
   mLeds.b.OPSustain    	= ~mStep->b.OpModeSUSTAIN;
   mLeds.b.OPEnable     	= ~mStep->b.OpModeENABLE;
 
-  if ( (gDisplayMode == DISPLAY_MODE_SAVE_1) || (gDisplayMode == DISPLAY_MODE_SAVE_2) ||
-      (gDisplayMode == DISPLAY_MODE_LOAD_1) || (gDisplayMode == DISPLAY_MODE_LOAD_2) ) {
+  if ( (display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
+      (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2) ) {
     mLeds.value[0] = 0xFF;
     mLeds.value[1] = 0xFF;
     mLeds.value[2] = 0xFF;
     mLeds.value[3] = 0xFF;
 
-    if((gDisplayMode == DISPLAY_MODE_SAVE_1) || (gDisplayMode == DISPLAY_MODE_SAVE_2))
+    if((display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2))
     {
       mLeds.b.Seq2Wait = 1;
       save_counter++;
@@ -2575,7 +2388,7 @@ void UpdateModeSection(void)
       }
       else save_counter = 0;
     }
-    else if((gDisplayMode == DISPLAY_MODE_LOAD_1) || (gDisplayMode == DISPLAY_MODE_LOAD_2))
+    else if((display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2))
     {
       mLeds.b.Seq1Wait = 1;
       load_counter++;
@@ -2602,14 +2415,14 @@ void UpdateModeSection(void)
   //Send data to leds
   LEDS_modes_SendStruct(&mLeds);
 
-  if ( (gDisplayMode == DISPLAY_MODE_VIEW_1) ||
-      (gDisplayMode == DISPLAY_MODE_EDIT_1) ) {
+  if ( (display_mode == DISPLAY_MODE_VIEW_1) ||
+      (display_mode == DISPLAY_MODE_EDIT_1) ) {
     DISPLAY_LED_I_ON;
     DISPLAY_LED_II_OFF;
   };
 
-  if ( (gDisplayMode == DISPLAY_MODE_VIEW_2) ||
-      (gDisplayMode == DISPLAY_MODE_EDIT_2) ) {
+  if ( (display_mode == DISPLAY_MODE_VIEW_2) ||
+      (display_mode == DISPLAY_MODE_EDIT_2) ) {
     DISPLAY_LED_II_ON;
     DISPLAY_LED_I_OFF;
   };
@@ -2620,20 +2433,20 @@ void UpdateModeSection(void)
  */
 void UpdateStepSection(void)
 {
-  if ( gDisplayMode == DISPLAY_MODE_VIEW_1 ) {
-    LED_STEP_LightStep(gSequenceStepNumber_1);
+  if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
+    LED_STEP_LightStep(afg1_step_num);
   };
-  if ( gDisplayMode == DISPLAY_MODE_VIEW_2 ) {
-    LED_STEP_LightStep(gSequenceStepNumber_2);
+  if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
+    LED_STEP_LightStep(afg2_step_num);
   };
-  if ( ( gDisplayMode == DISPLAY_MODE_EDIT_1 ) ||
-      ( gDisplayMode == DISPLAY_MODE_EDIT_2 ) ||
-      ( gDisplayMode == DISPLAY_MODE_SAVE_1 ) ||
-      ( gDisplayMode == DISPLAY_MODE_SAVE_2 ) ||
-      (gDisplayMode == DISPLAY_MODE_LOAD_1) ||
-      (gDisplayMode == DISPLAY_MODE_LOAD_2)
+  if ( ( display_mode == DISPLAY_MODE_EDIT_1 ) ||
+      ( display_mode == DISPLAY_MODE_EDIT_2 ) ||
+      ( display_mode == DISPLAY_MODE_SAVE_1 ) ||
+      ( display_mode == DISPLAY_MODE_SAVE_2 ) ||
+      (display_mode == DISPLAY_MODE_LOAD_1) ||
+      (display_mode == DISPLAY_MODE_LOAD_2)
   ) {
-    LED_STEP_LightStep(gEditModeStepNum);
+    LED_STEP_LightStep(edit_mode_step_num);
   };
 };
 
@@ -2673,7 +2486,7 @@ void PermutePulses(void)
     swapped_pulses = 1;
   }
   // Write selection to memory, reset LEDs and return
-  CAT25512_write_block(100*sizeof(Steps)+sizeof(CalConstants),&swapped_pulses,1);
+  CAT25512_write_block(100*sizeof(steps)+sizeof(cal_constants),&swapped_pulses,1);
   mLeds.b.Pulse1=0;
   LEDS_modes_SendStruct(&mLeds);
   while (!(myButtons.b.Pulse1On && myButtons.b.Pulse2On)) {
@@ -2737,15 +2550,15 @@ void Calibration(void)
 
   for(i = 0; i < 8 ; i++)
   {
-    CalConstants[i] = AddData[i];
-    if(CalConstants[i] < 100) CalConstants[i] = 4095;
+    cal_constants[i] = add_data[i];
+    if(cal_constants[i] < 100) cal_constants[i] = 4095;
 
   };
   //
   ADCPause();
   //printf("ADCPause %d \n ",__LINE__);
   //Store calibration constants
-  CAT25512_write_block(100*sizeof(Steps), (unsigned char *) CalConstants, sizeof(CalConstants));
+  CAT25512_write_block(100*sizeof(steps), (unsigned char *) cal_constants, sizeof(cal_constants));
   mADC_init();
   return; //Get outta here properly when calibration is completed. Fixes problem where CalConstant[8] wasn't being calculate properly  SB 4/30/20
   //printf("mADC_init %d \n ",__LINE__);
@@ -2809,21 +2622,21 @@ int main(void)
 
 
   /* Reset update states */
-  DisplayUpdateFlags.value = 0x00;
-  DisplayUpdateFlags.b.MainDisplay 	= 1;
-  DisplayUpdateFlags.b.StepsDisplay = 1;
+  display_update_flags.value = 0x00;
+  display_update_flags.b.MainDisplay 	= 1;
+  display_update_flags.b.StepsDisplay = 1;
 
   /* Init steps structures */
-  Steps[0][0].b.TimeRange_p3 = 1;
-  Steps[0][0].b.FullRange = 1;
-  Steps[0][0].b.Swing = 0;
-  Steps[1][0] = Steps[0][0];
+  steps[0][0].b.TimeRange_p3 = 1;
+  steps[0][0].b.FullRange = 1;
+  steps[0][0].b.Swing = 0;
+  steps[1][0] = steps[0][0];
 
 
   for(_cnt=1;_cnt<=31;_cnt++)
   {
-    Steps[0][_cnt] = Steps[0][0];
-    Steps[1][_cnt] = Steps[0][0];
+    steps[0][_cnt] = steps[0][0];
+    steps[1][_cnt] = steps[0][0];
   };
 
   //Debug stuff
@@ -2836,13 +2649,13 @@ int main(void)
   DisplayLedsIOInit();
 
   DipConfig_init();
-  gDipConfig = GetDipConfig();
+  dip_config = GetDipConfig();
 
   /* Out dip switch state to panel */
   LED_STEP_init();
   LED_STEP_SendWord(0xFFFF);
   delay_ms(1000);
-  LED_STEP_SendWord(0xFFF0|(*((uint8_t*) (&gDipConfig))));
+  LED_STEP_SendWord(0xFFF0|(*((uint8_t*) (&dip_config))));
   delay_ms(1000);
 
   //Init external memory
@@ -2877,12 +2690,12 @@ int main(void)
   InternalDACInit();
   Init_Expander_GPIO();
 
-  gSequencerMode_1 = SEQUENCER_MODE_STOP;
-  gSequencerMode_2 = SEQUENCER_MODE_STOP;
+  afg1_mode = MODE_STOP;
+  afg2_mode = MODE_STOP;
 
   // Check which version of the MCU we have
   versionInit();
-  rev = versionRevised();
+  revision = versionRevised();
 
   //Scan initial state
   key_state = GetButton();
@@ -2901,25 +2714,25 @@ int main(void)
   else
   {
     // if not restore calibration constants from memory
-    CAT25512_read_block(100*sizeof(Steps), (unsigned char *) CalConstants, sizeof(CalConstants));
+    CAT25512_read_block(100*sizeof(steps), (unsigned char *) cal_constants, sizeof(cal_constants));
     for(i = 0; i < 8; i++) {
-      if (CalConstants[i] < 100) CalConstants[i] = 4095;
-      external_cal[i] = 4095.0 / (float) CalConstants[i];
+      if (cal_constants[i] < 100) cal_constants[i] = 4095;
+      external_cal[i] = 4095.0 / (float) cal_constants[i];
     }
 
-    swapped_pulses = CAT25512_ReadByte(100*sizeof(Steps)+sizeof(CalConstants));
+    swapped_pulses = CAT25512_ReadByte(100*sizeof(steps)+sizeof(cal_constants));
   }
 
   while (1) {
 
     // Set magic numbers from dip switch state
-    if (gDipConfig.b.V_OUT_1V) {
+    if (dip_config.b.V_OUT_1V) {
       // 1v per octave, who dis?
       octave_offset = 409.5;
       semitone_offset = 34.125;
       quantizer_magic = 0.0293;
       limited_range_multiplier = 0.1;
-    } else if (gDipConfig.b.V_OUT_1V2) {
+    } else if (dip_config.b.V_OUT_1V2) {
       // 1.2v per octave, the one true way
       octave_offset = 491.4;
       semitone_offset = 40.95;
@@ -2970,18 +2783,18 @@ int main(void)
     /* ENDOF: keys proceed */
 
     //Update panel state
-    if (DisplayUpdateFlags.b.MainDisplay) {
+    if (display_update_flags.b.MainDisplay) {
       UpdateModeSection();
-      DisplayUpdateFlags.b.MainDisplay = 0;
-      if ( 	(gDisplayMode == DISPLAY_MODE_SAVE_1) || (gDisplayMode == DISPLAY_MODE_SAVE_2) ||
-          (gDisplayMode == DISPLAY_MODE_LOAD_1) || (gDisplayMode == DISPLAY_MODE_LOAD_2) )
+      display_update_flags.b.MainDisplay = 0;
+      if ( 	(display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
+          (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2) )
       {
-        DisplayUpdateFlags.b.MainDisplay = 1;
+        display_update_flags.b.MainDisplay = 1;
       }
     };
-    if (DisplayUpdateFlags.b.StepsDisplay) {
+    if (display_update_flags.b.StepsDisplay) {
       UpdateStepSection();
-      DisplayUpdateFlags.b.StepsDisplay = 0;
+      display_update_flags.b.StepsDisplay = 0;
     };
 
     for(j = 0; j < 2; j++)
@@ -2999,8 +2812,8 @@ int main(void)
 
       previous_step[j] = pots_step[j];
 
-      if(pots_step[j] < (max_step+1)) next_step_tres = (pots_step[j])*CalConstants[ADC_STAGEADDRESS_Ch_1+j]/(max_step+1) + 20;
-      if(pots_step[j] > 1) prev_step_tres = (pots_step[j]-1)*CalConstants[ADC_STAGEADDRESS_Ch_1+j]/(max_step+1) - 20;
+      if(pots_step[j] < (max_step+1)) next_step_tres = (pots_step[j])*cal_constants[ADC_STAGEADDRESS_Ch_1+j]/(max_step+1) + 20;
+      if(pots_step[j] > 1) prev_step_tres = (pots_step[j]-1)*cal_constants[ADC_STAGEADDRESS_Ch_1+j]/(max_step+1) - 20;
 
       acc = 0;
       for(i =0; i<10; i++)
@@ -3008,14 +2821,14 @@ int main(void)
         if(j == 0)
         {
           //					temp = (AddData[ADC_STAGEADDRESS_Ch_1]*4095/CalConstants[ADC_STAGEADDRESS_Ch_1]);
-          temp = (AddData[ADC_STAGEADDRESS_Ch_1]);
+          temp = (add_data[ADC_STAGEADDRESS_Ch_1]);
           if(temp > 4095) temp = 4095;
           acc += temp;
         }
         else
         {
           //					temp = (AddData[ADC_STAGEADDRESS_Ch_2]*4095/CalConstants[ADC_STAGEADDRESS_Ch_2]);
-          temp = (AddData[ADC_STAGEADDRESS_Ch_2]);
+          temp = (add_data[ADC_STAGEADDRESS_Ch_2]);
           if(temp > 4095) temp = 4095;
           acc += temp;
         }
@@ -3038,7 +2851,9 @@ int main(void)
     if (!(prev_jackpins & 1) && (jackpins & 1)) stop1 = EXTCLOCK_WINDOW; // stop jack rising edge
     if (!(prev_jackpins & (1<<8)) && (jackpins & (1<<8))) start1 = EXTCLOCK_WINDOW; // start jack rising edge
     if (stop1 && start1) { // both signals high means external clock
-      ExtClockProcessor_1();
+      // Advance
+      afg1_mode = MODE_ADVANCE;
+      JumpToStep1(GetNextStep(0, afg1_step_num));
       stop1 = 0;
       start1 = 0;
       // Aha! Now need to wait until pin goes low before unsticking
@@ -3050,7 +2865,7 @@ int main(void)
     }
     else if (start1) {
       if (--start1 == 0) { // start1 window timed out
-        doStart1();
+        DoStart1();
       }
     }
 
@@ -3058,7 +2873,9 @@ int main(void)
     if (!(prev_jackpins & (1<<1)) && (jackpins & (1<<1))) stop2 = EXTCLOCK_WINDOW; // stop jack rising edge
     if (!(prev_jackpins & (1<<6)) && (jackpins & (1<<6))) start2 = EXTCLOCK_WINDOW; // start jack rising edge
     if (stop2 && start2) { // both signals high means external clock
-      ExtClockProcessor_2();
+      // Advance
+      afg2_mode = MODE_ADVANCE;
+      JumpToStep2(GetNextStep(1, afg2_step_num));
       stop2 = 0;
       start2 = 0;
       // Aha! Now need to wait until pin goes low before unsticking
@@ -3070,17 +2887,12 @@ int main(void)
     }
     else if (start2) {
       if (--start2 == 0) { // start1 window timed out
-        doStart2();
+        DoStart2();
       }
     }
 
-  };// end main loop
-
-
+  }; // end main loop
 };
-
-
-
 
 void delay_ms(unsigned int ms)
 {
