@@ -22,12 +22,7 @@
 
 #define AIRCR_VECTKEY_MASK    ((uint32_t)0x05FA0000)
 
-volatile unsigned int 	ADC_result;
-volatile unsigned char 	ADC_POT_sel_cnt = 0;
-
-#define MANUAL_ADDR_MAX_VAL		3472	//4095
-#define MANUAL_ADDR_STEPS			16
-#define MANUAL_ADDR_WIDE			(MANUAL_ADDR_MAX_VAL/MANUAL_ADDR_STEPS)
+volatile uint8_t ADC_POT_sel_cnt = 0;
 
 #define KEY_MIDDLE_SECTION_MASK					0x7F0000F003FFFEFC
 #define KEY_MIDDLE_SECTION_ALL_OFF_MASK 		0x070000F003FE0EFC			
@@ -36,7 +31,6 @@ volatile unsigned char 	ADC_POT_sel_cnt = 0;
 #define EXT_DAC_CH_1	0x01
 #define EXT_DAC_CH_2	0x02
 #define EXT_DAC_CH_3	0x03
-
 
 #define ADC_EXT_VOLTAGE_A			0x00
 #define ADC_EXT_VOLTAGE_B			0x01
@@ -47,9 +41,10 @@ volatile unsigned char 	ADC_POT_sel_cnt = 0;
 #define ADC_STAGEADDRESS_Ch_1	0x06
 #define ADC_STAGEADDRESS_Ch_2	0x07
 
+
+
 #define PulseStatus printf("Line: %i \n Step#; %i \n Mode: %d \n  PrevMode: %d \n Pulse1: %i \n \n", __LINE__, gSequenceStepNumber_1,gSequencerMode_1,gPrevSequencerMode_1, (Steps[0][gSequenceStepNumber_1].b.OutputPulse1) );
 
-#define scale(in) (in<30)?0:(in>4030)?4125:(in*132/128)-30;	
 //Union with flags which allows to update different parts of panel
 typedef union
 {
@@ -68,11 +63,12 @@ typedef union
 
 volatile uDisplayUpdateFlag DisplayUpdateFlags;
 
+#define SEQUENCER_DATA_SIZE (6*2*32)
 volatile uStep Steps[2][32];				//Main steps array data
-#define SEQUENCER_DATA_SIZE	(6*2*32)
-//volatile unsigned int AddData[8];		//Additional analog data
+
 volatile uint16_t AddData[8];		//Additional analog data
 volatile unsigned int CalConstants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};		//Additional analog data
+
 unsigned char swapped_pulses = 0; // do the pulse LEDs need to be swapped? 
 
 //Display modes
@@ -169,26 +165,14 @@ float octave_offset; // span of 1 octave
 float semitone_offset; // span of 1 semitone
 float quantizer_magic; // reciprocal of semitone_offset
 
-// Variables for adc scan
-#define NUMS 10
-volatile uint16_t average_array[2][32][NUMS];
-volatile uint16_t average_index[2][32];
+
 volatile long long acc;
 volatile uint16_t steps_lp[2][32];
 volatile uint16_t tsteps_lp[2][32];
 
-volatile uint16_t voltages_lp[32];
-volatile uint16_t times_lp[32];
-
-volatile uint16_t adcreading; 
-
 volatile uint16_t step1;
 
 unsigned char rev; 
-
-#define POT_TYPE_VOLTAGE 100
-#define POT_TYPE_TIME 101
-#define POT_TYPE_OTHER 102
 
 unsigned char GetNextStep(unsigned char _Section, unsigned char _StepNum);
 	
@@ -210,8 +194,8 @@ volatile uint32_t millis;
 
 #define KEY_DEBOUNCE_COUNT 3
 #define KEY_TIMER 5 // scan switches every 5ms
-
 #define EXTCLOCK_WINDOW 4
+
 uint32_t jackpins = 0;
 uint32_t prev_jackpins = 0;
 unsigned char start1 = 0;
@@ -221,52 +205,14 @@ unsigned char stop2 = 0;
 int swing1 = 0;
 int swing2 = 0;
 
-
-#define JUMP_THRESHOLD 150 // threshold for jumping straight to a new ADC reading rather than slewing
-
 void systickInit(uint16_t frequency) {
   RCC_ClocksTypeDef RCC_Clocks;
   RCC_GetClocksFreq(&RCC_Clocks);
   (void) SysTick_Config(RCC_Clocks.HCLK_Frequency / frequency);
 }
- void SysTick_Handler (void)
- {
-   millis++; 
- }
 
-void writeVoltageSlider() {
-
-}
-
-void writeTimeSlider() {
-
-}
-
-void writeOtherPot() {
-  /*
-
-   if (adcreading >= AddData[stage]) {
-        delta = adcreading - AddData[stage];
-      } else {
-        delta = AddData[stage] - adcreading;
-      }
-      if (delta < 40) {
-        // 41 ~= 4096 / 100 ~= 0.1v ~= 1 semitone
-        // Apply a lot of filtering when the reading is within 1 semitone
-        AddData[stage] += (adcreading - AddData[stage]) >> 4;
-      } else if (delta < 80) {
-        // Less filtering
-        AddData[stage] += (adcreading - AddData[stage]) >> 2;
-      } else if (delta < 160) {
-        // Less filtering
-        AddData[stage] += (adcreading - AddData[stage]) >> 1;
-      } else {
-        // No filtering
-        AddData[stage] = adcreading;
-      }
-
-   */
-
+void SysTick_Handler (void) {
+  millis++;
 }
 
 // Voltage smoothers are low pass filters that keep intermediate 16 bit state from smoothed 12 bit readings.
