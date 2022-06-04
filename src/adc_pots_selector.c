@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "adc_pots_selector.h"
+#include "delays.h"
 
 #define ADC_PS_SH_PIN	GPIO_Pin_13
 #define ADC_PS_DS_PIN	GPIO_Pin_14
@@ -230,7 +231,6 @@ unsigned char ADC_inc(unsigned char pot)
   }
   /* // activate the shift register with the new data */
   /* ADC_POTS_SELECTOR_STORAGE_LOW; */
-  /* DELAY_CLOCK(); // serial clock pulse should be 80ns */
   ADC_POTS_SELECTOR_STORAGE_HIGH;// think the sendbyte and sendhalfbyte have enough delay at the end
   DELAY_NOPS(); 
   // tell the main interrupt which pot we're on now
@@ -273,7 +273,7 @@ unsigned char ADC_inc_expanded(unsigned char pot)
   }
   // activate the shift register with the new data
   ADC_POTS_SELECTOR_STORAGE_LOW;
-  DELAY_CLOCK();  // serial clock pulse should be 80ns
+  DELAY_CLOCK_20();  // serial clock pulse should be 80ns
   ADC_POTS_SELECTOR_STORAGE_HIGH;
   // tell the main interrupt which pot we're on now
   return _pot; 

@@ -1,13 +1,9 @@
-/*
- * HC165.h
- *
- *  Created on: 13.09.2008
- *      Author: mamonth
- */
-
 #ifndef HC165_H_
 #define HC165_H_
-//Union which allows to control each switch on panel separately
+
+#include "delays.h"
+
+// Union which allows to control each switch on panel separately
 typedef union
 {
 	struct {
@@ -92,8 +88,5 @@ unsigned char HC165_GetByte(void);
 unsigned long int HC165_GetDWord(void);
 unsigned long int HC165_GetDWord1(void);
 unsigned long long int GetButton(void);
-extern void delay_ms(unsigned int ms);
-extern void delay_us(unsigned int us);
-
 
 #endif /* HC165_H_ */

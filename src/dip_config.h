@@ -1,5 +1,5 @@
-#ifndef __DIP_CONFIG
-#define __DIP_CONFIG
+#ifndef __DIP_CONFIG_H
+#define __DIP_CONFIG_H
 
 /*Union for the state of configuration dip switch*/
 typedef union

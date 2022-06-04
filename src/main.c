@@ -18,8 +18,9 @@
 #include "expander.h"
 #include "version.h"
 #include "stdio.h"
-
-#define AIRCR_VECTKEY_MASK    ((uint32_t)0x05FA0000)
+#include "program.h"
+#include "delays.h"
+#include "analog_data.h"
 
 volatile uint8_t adc_pot_sel = 0;
 
@@ -38,7 +39,7 @@ volatile uint8_t adc_pot_sel = 0;
 #define ADC_STAGEADDRESS_Ch_2	0x07
 
 
-//Union with flags which allows to update different parts of panel
+// Union with flags which allows to update different parts of panel
 typedef union {
   struct {
     unsigned char MainDisplay:1;
@@ -55,15 +56,7 @@ typedef union {
 
 volatile uDisplayUpdateFlag display_update_flags;
 
-// Main steps array data
-volatile uStep steps[2][32];				
 #define SEQUENCER_DATA_SIZE (6*2*32)
-
-// Additional analog data
-volatile uint16_t add_data[8];		
-volatile uint16_t cal_constants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};
-// Calibration scalers for external inputs, precomputed in setup
-float external_cal[8] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
 
 // Do the pulse LEDs need to be swapped? 
 unsigned char swapped_pulses = 0; 
@@ -82,7 +75,7 @@ unsigned char swapped_pulses = 0;
 volatile uint8_t display_mode = DISPLAY_MODE_VIEW_1;	
 
 // Current step number
-volatile uint8_t afg1_step_num = 0, afg2_step_num = 0; 
+volatile uint8_t afg1_step_num = 0, afg2_step_num = 0;
 
 // Length of the current step in timer "ticks"
 volatile static uint32_t afg1_step_width = 0, afg2_step_width = 0;
@@ -142,13 +135,6 @@ volatile unsigned int afg2_prev_step_level = 0;
 volatile uint8_t pots_step[2] = {1,1};
 volatile uint8_t previous_step[2] = {1,1};
 
-// Precomputed magic numbers for voltage scaling
-// In the context of 12 bit range / 0.0 - 4095.0
-float limited_range_multiplier; // octaves per 10v range
-float octave_offset; // span of 1 octave
-float semitone_offset; // span of 1 semitone
-float quantizer_magic; // reciprocal of semitone_offset
-
 unsigned char revision; 
 
 // Current patches bank
@@ -174,93 +160,6 @@ unsigned char start2 = 0;
 unsigned char stop2 = 0;
 int swing1 = 0;
 int swing2 = 0;
-
-volatile uint32_t millis;
-
-void systickInit(uint16_t frequency) {
-  RCC_ClocksTypeDef RCC_Clocks;
-  RCC_GetClocksFreq(&RCC_Clocks);
-  (void) SysTick_Config(RCC_Clocks.HCLK_Frequency / frequency);
-}
-
-void SysTick_Handler (void) {
-  millis++;
-}
-
-// Voltage smoothers are low pass filters that keep intermediate 16 bit state from smoothed 12 bit readings.
-// The filtering increases as the readings converge mainly to reduce jitter noise.
-
-// Applies the voltage smoother to the state var passed.
-// The new_reading should already be shifted to a 16 bit value.
-// The returned value is shifted back down to 12 bit range.
-inline static uint16_t apply_voltage_smoother(uint16_t new_reading, volatile uint16_t *state) {
-  register uint16_t delta;
-
-  if (new_reading > *state) {
-    delta = new_reading - *state;
-  } else {
-    delta = *state - new_reading;
-  }
-  if (delta < 512) {
-    // Apply a lot of filtering when the reading is close
-    *state += (new_reading - *state) >> 3;
-  } else if (delta < 1024) {
-    // Less filtering
-    *state += (new_reading - *state) >> 2;
-  } else if (delta < 2048) {
-    // Less filtering
-    *state += (new_reading - *state) >> 1;
-  } else {
-    // No filtering
-    *state = new_reading;
-  }
-  return *state >> 4;
-}
-
-void WriteVoltageSlider(uint8_t slider_num, uint32_t new_adc_reading) {
-  static volatile uint16_t voltage_smoothers[32];
-
-  uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff);
-  uint16_t smoothed = apply_voltage_smoother(adc_reading << 4, &voltage_smoothers[slider_num]);
-
-  for (uint8_t j = 0; j < 2; j++) {
-    if (steps[j][slider_num].b.WaitVoltageSlider) {
-      if (smoothed >> 4 == steps[j][slider_num].b.VLevel >> 4) {
-        // Unpin the slider
-        steps[j][slider_num].b.WaitVoltageSlider = 0;
-        steps[j][slider_num].b.VLevel = smoothed;
-      }
-    } else {
-      steps[j][slider_num].b.VLevel = smoothed;
-    }
-  }
-}
-
-void WriteTimeSlider(uint8_t slider_num, uint32_t new_adc_reading) {
-  static volatile uint16_t voltage_smoothers[32];
-
-  uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff) << 4;
-  uint16_t smoothed = apply_voltage_smoother(adc_reading, &voltage_smoothers[slider_num]);
-
-  for (uint8_t j = 0; j < 2; j++) {
-    if (steps[j][slider_num].b.WaitTimeSlider) {
-      if (smoothed >> 4 == steps[j][slider_num].b.TLevel >> 4) {
-        // Unpin the slider
-        steps[j][slider_num].b.WaitTimeSlider = 0;
-        steps[j][slider_num].b.TLevel = smoothed;
-      }
-    } else {
-      steps[j][slider_num].b.TLevel = smoothed;
-    }
-  }
-}
-
-void WriteOtherCv(uint8_t cv_num, uint32_t new_adc_reading) {
-  static volatile uint16_t voltage_smoothers[8];
-
-  uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff) << 4;
-  add_data[cv_num] = apply_voltage_smoother(adc_reading, &voltage_smoothers[cv_num]);
-}
 
 // ADC interrupt handler
 void ADC_IRQHandler() {
@@ -447,7 +346,7 @@ void mInterruptInit(void) {
   EXTI_ClearITPendingBit(EXTI_Line7);
 };
 
-void doStop1() {
+void DoStop1() {
   if ((afg1_mode != MODE_WAIT && afg1_mode != MODE_WAIT_HI_Z && afg1_mode != MODE_STAY_HI_Z)) {
     afg1_prev_mode = MODE_RUN;
     afg1_mode = MODE_STOP;
@@ -457,7 +356,7 @@ void doStop1() {
   };
 }
 
-void doStop2() {
+void DoStop2() {
   if (afg2_mode != MODE_WAIT && afg2_mode != MODE_WAIT_HI_Z && afg2_mode != MODE_STAY_HI_Z) {
     afg2_prev_mode = MODE_RUN;
     afg2_mode = MODE_STOP;
@@ -470,16 +369,19 @@ void doStop2() {
 // AFG1 stop interrupt
 void EXTI0_IRQHandler() {
   // Handled in the main loop
+  // Not used for anything
   EXTI_ClearITPendingBit(EXTI_Line0);	
 };
 
 // AFG2 stop interrupt
 void EXTI1_IRQHandler() {
   // Handled in the main loop
+  // Not used for anything
   EXTI_ClearITPendingBit(EXTI_Line1);
 };
 
 // Start Timer 3 for AFG1 start pulse duration measurement
+// Only used when going into enable/sustain
 void InitStart_1_SignalTimer() {
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
 
@@ -493,6 +395,7 @@ void InitStart_1_SignalTimer() {
 };
 
 // Start Timer 7 for AFG2 start pulse duration measurement
+// Only used when going into enable/sustain
 void InitStart_2_SignalTimer() {
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM7, ENABLE);
 
@@ -715,101 +618,6 @@ void LoadSequence(unsigned char SequenceCell)
 
 };
 
-
-/*
-	Returns the duration of step number _StepNum in section _Section
- */
-#define EXT_VOLTAGE_STEP_SELECT	1500
-#define EXT_VOLTAGE_STEP_OFFSET	1000
-
-uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
-  uint32_t ret_val = 0;
-  uint32_t time_level = 0;
-  uint8_t ext_ban_num = 0;
-
-  if (steps[section][step_num].b.TimeSource) {
-    // Step time is set externally
-    ext_ban_num = (uint8_t) steps[section][step_num].b.TLevel >> 10;
-    time_level = add_data[ext_ban_num] * external_cal[ext_ban_num];
-  } else {
-    // Step time is set on panel
-    time_level = (steps[section][step_num].b.TLevel + 1);
-  };
-
-  // TODO(maxl0rd): factor out divisions
-
-  if (steps[section][step_num].b.TimeRange_p03 == 1) {
-    ret_val = (unsigned long int) ((((float) time_level * 112)/4095) +8);
-  };
-
-  if (steps[section][step_num].b.TimeRange_p3 == 1) {
-    ret_val = (unsigned long int) ((((float) time_level * 1120)/4095) +80);
-  };
-
-  if (steps[section][step_num].b.TimeRange_3 == 1) {
-    ret_val = (unsigned long int) ((((float) time_level * 11200)/4095) +800);
-  };
-
-  if (steps[section][step_num].b.TimeRange_30 == 1) {
-    ret_val = (unsigned long int) ((((float) time_level * 112000)/4095) +8000);
-  };
-
-  return ret_val;
-};
-
-
-/*
-	Return the voltage for step number _StepNum in section _Section
- */
-
-uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
-
-  float voltage_level = 0.0; // stay in floating point throughout!
-  uint8_t ext_ban_num = 0;
-
-  if (steps[section][step_num].b.VoltageSource) {
-    // Step voltage is set externally
-    ext_ban_num = (steps[section][step_num].b.VLevel
-        + EXT_VOLTAGE_STEP_OFFSET)/EXT_VOLTAGE_STEP_SELECT;
-    if (ext_ban_num > 3) ext_ban_num = 3;
-    voltage_level = (float) add_data[ext_ban_num] * external_cal[ext_ban_num];
-  } else {
-    // Step voltage is set by slider
-    voltage_level = steps[section][step_num].b.VLevel;
-  };
-
-  // Clamp if smoothing or something has gone awry
-  if (voltage_level > 4095.0) {
-    voltage_level = 4095.0;
-  } else if (voltage_level < 0.0) {
-    voltage_level = 0.0;
-  }
-
-  if (!steps[section][step_num].b.FullRange) {
-    // Scale voltage for limited range
-    voltage_level *= limited_range_multiplier;
-    if (steps[section][step_num].b.Voltage2) {
-      voltage_level += octave_offset;
-    } else if (steps[section][step_num].b.Voltage4) {
-      voltage_level += octave_offset * 2;
-    } else if (steps[section][step_num].b.Voltage6) {
-      voltage_level += octave_offset * 3;
-    } else if (steps[section][step_num].b.Voltage8) {
-      voltage_level += octave_offset * 4;
-    }
-  }
-
-  if (steps[section][step_num].b.Quantize) {
-    // Quantize the output to semitones.
-    // Use the precomputed magic values to avoid float divisions
-    voltage_level += 0.5 * semitone_offset;
-    voltage_level = (float) ((int) (voltage_level * quantizer_magic));
-    voltage_level *= semitone_offset;
-  }
-
-  return (unsigned int) voltage_level + 0.5;
-};
-
 // Calculate the number of next step
 uint8_t GetNextStep(uint8_t section, uint8_t step_num) {
 
@@ -865,6 +673,7 @@ uint8_t GetNextStep(uint8_t section, uint8_t step_num) {
  */
 void TIM4_IRQHandler() {
 
+  // TODO(maxl0rd): rename locals
   unsigned long int StepWidth_1 = 0; // Step width = number of timer ticks
   float deltaVoltage = 0.0;
   unsigned long OutputVoltage = 0;
@@ -875,6 +684,7 @@ void TIM4_IRQHandler() {
 
   // Calculate step duration and scaler for Timer 4.
   // Units are kind of obscure here.
+  // TODO(maxl0rd): use precomputed calibration
   StepWidth_1 = GetStepWidth(0, afg1_step_num);
   TIM4->PSC = (uint16_t) (
       (((((float) add_data[ADC_TIMEMULTIPLY_Ch_1]) * 3.5f)
@@ -937,12 +747,6 @@ void TIM4_IRQHandler() {
       // Fire pulses again at end of step if "swing" is on
       doPulses = 1;
     }
-
-    if (afg1_mode == MODE_ADVANCE) {
-      // Advance to the next step
-      afg1_step_num = GetNextStep(0, afg1_step_num);
-      doPulses = 1;
-    };
   };
 
 
@@ -994,7 +798,8 @@ void TIM4_IRQHandler() {
   MAX5135_DAC_send(EXT_DAC_CH_0, steps[0][afg1_step_num].b.TLevel >> 2);
 
   // Set AFG1 reference out value
-  if (afg1_mode == MODE_RUN) {
+  // TODO(maxl0rd): check that MODE_ADVANCE is being set correctly in every case and that JumpToStep1() is called
+  if (afg1_mode == MODE_RUN || afg1_mode == MODE_ADVANCE) {
     // (Slopes down from 1023 to 0 over the course of the step)
     MAX5135_DAC_send(EXT_DAC_CH_1,
         1023 - (unsigned int) ((1023.0 / (float) StepWidth_1) * ((float) afg1_step_cnt)));
@@ -1013,12 +818,15 @@ void TIM4_IRQHandler() {
  */
 void TIM5_IRQHandler() {
 
+  // TODO(maxl0rd): rename locals
   unsigned long int StepWidth_2 = 0;
   float deltaVoltage = 0.0;
   unsigned long OutputVoltage = 0;
   unsigned char doPulses = 0;
 
   StepWidth_2 = GetStepWidth(1, afg2_step_num);
+
+  // TODO(maxl0rd): use precomputed calibration
   TIM5->PSC = (uint16_t) (
       ((((add_data[ADC_TIMEMULTIPLY_Ch_2])*3.5)
           / cal_constants[ADC_TIMEMULTIPLY_Ch_2])+0.5)
@@ -1035,6 +843,7 @@ void TIM5_IRQHandler() {
     if ((afg2_mode == MODE_ADVANCE)) {
       afg2_mode =  MODE_STOP;
     };
+
     if (steps[1][afg2_step_num].b.OpModeSTOP) {
       afg2_prev_mode = afg2_mode;
       afg2_mode = MODE_STOP;
@@ -1065,12 +874,6 @@ void TIM5_IRQHandler() {
     if (afg2_mode == MODE_STOP && swing2) {
       doPulses = 1;
     }
-
-    if (afg2_mode == MODE_ADVANCE) {
-      // Advance to the next step
-      afg2_step_num = GetNextStep(1, afg2_step_num);
-      doPulses = 1;
-    };
   }
 
   if (afg2_mode == MODE_WAIT) {
@@ -1113,7 +916,8 @@ void TIM5_IRQHandler() {
 
   MAX5135_DAC_send(EXT_DAC_CH_2, steps[1][afg2_step_num].b.TLevel >> 2);
 
-  if (afg2_mode == MODE_RUN) {
+  // TODO(maxl0rd): check that MODE_ADVANCE is being set correctly in every case and that JumpToStep2() is called
+  if (afg2_mode == MODE_RUN || afg2_mode == MODE_ADVANCE) {
     MAX5135_DAC_send(EXT_DAC_CH_3,
         1023 - (unsigned int) (((float) 0x3FF/ (float) StepWidth_2) * ((float) afg2_step_cnt)));
   } else {
@@ -1156,6 +960,7 @@ static inline void DoStepOutputPulses2() {
   TIM_SetCounter(TIM8, 0x00);
 }
 
+#define AIRCR_VECTKEY_MASK    ((uint32_t)0x05FA0000)
 
 /*
 	Init 2 timers to control steps
@@ -1184,8 +989,6 @@ void mTimersInit(void)
 
   TIM_ITConfig(TIM4, TIM_IT_Update, ENABLE);
   TIM_ITConfig(TIM5, TIM_IT_Update, ENABLE);
-
-
 
   nvicStructure.NVIC_IRQChannel = TIM4_IRQn;
   nvicStructure.NVIC_IRQChannelPreemptionPriority = 0;
@@ -1239,8 +1042,7 @@ void mTimersInit(void)
 
 };
 
-//Turn off pulses
-//Section 1
+// Turn off pulses afg 1
 void TIM8_UP_TIM13_IRQHandler(void)
 {
   if(TIM_GetITStatus(TIM8, TIM_IT_Update) != RESET)
@@ -1253,7 +1055,7 @@ void TIM8_UP_TIM13_IRQHandler(void)
   }
 }
 
-//Section 2
+// Turn off pulses afg 2
 void TIM8_TRG_COM_TIM14_IRQHandler(void)
 {
   if(TIM_GetITStatus(TIM14, TIM_IT_Update) != RESET)
@@ -1266,8 +1068,10 @@ void TIM8_TRG_COM_TIM14_IRQHandler(void)
   }
 }
 
-//Timer Interrupt handler for start switch scan
-//Section 1
+// Timer Interrupt handler for start scan
+// Section 1
+// TODO(maxl0rd):
+// This is only used when timer is started by sustain or enable mode
 void TIM3_IRQHandler()
 {
   TIM3->SR = (uint16_t) ~TIM_IT_Update;
@@ -1301,7 +1105,10 @@ void TIM3_IRQHandler()
   }
 };
 
-//Section 2
+// Section 2
+// TODO(maxl0rd):
+// This is only used when timer is started by sustain or enable mode
+
 void TIM7_IRQHandler()
 {
   TIM7->SR = (uint16_t) ~TIM_IT_Update;
@@ -1331,7 +1138,7 @@ void TIM7_IRQHandler()
   }
 };
 
-//Clear switch scan
+// Clear switch scan
 void TIM6_DAC_IRQHandler()
 {
   uint8_t i;
@@ -1468,10 +1275,7 @@ Init GPIOs for display leds
 void DisplayLedsIOInit(void)
 {
   GPIO_InitTypeDef GPIO_InitStructure;
-
-  //Ã�ËœÃ�Â½Ã�Â¸Ã‘â€ Ã�Â¸Ã�Â°Ã�Â»Ã�Â¸Ã�Â·Ã�Â°Ã‘ï¿½ Ã�Â¿Ã�ÂµÃ‘â‚¬Ã�Â¸Ã‘â€žÃ�ÂµÃ‘â‚¬Ã�Â¸Ã�Â¸ Ã�Â´Ã�Â»Ã‘ï¿½ Ã‘Æ’Ã�Â¿Ã‘â‚¬Ã�Â°Ã�Â²Ã�Â»Ã�ÂµÃ�Â½Ã�Â¸Ã‘ï¿½ Ã‘ï¿½Ã�Â²Ã�ÂµÃ‘â€šÃ�Â¾Ã�Â´Ã�Â¸Ã�Â¾Ã�Â´Ã�Â°Ã�Â¼Ã�Â¸ DISPLAY
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
-
   GPIO_InitStructure.GPIO_Pin 	= DISPLAY_LED_I|DISPLAY_LED_II;
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
   GPIO_InitStructure.GPIO_Mode 	= GPIO_Mode_OUT;
@@ -1490,7 +1294,7 @@ void InternalDACInit(void)
   DAC_StructInit(&mDacInit);
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
 
-  //GPIOs init
+  // GPIOs init
 
   mGPIO_InitStructure.GPIO_Pin 	= GPIO_Pin_4|GPIO_Pin_5;
   mGPIO_InitStructure.GPIO_Mode = GPIO_Mode_AN;
@@ -1516,9 +1320,8 @@ void InternalDACInit(void)
   DAC_SetChannel2Data(DAC_Align_12b_R, 0);
 };
 
-/*
-	Scan all switches
- */
+// Implement most of the UI logic for switch changes.
+// TODO(maxl0rd): figure out a way to break this up.
 unsigned char keyb_proc(uButtons * key)
 {
   unsigned char StepNum = 0, Section = 0, max_step;
@@ -1565,7 +1368,8 @@ unsigned char keyb_proc(uButtons * key)
   tmpStep = steps[Section][StepNum];
 
 
-  /* Middle section */
+  // Programming section
+  // TODO(maxl0rd): extract this into a function that takes tmpStep and key
 
   if ( !key->b.Voltage0 ) {
     tmpStep.b.Voltage0 = 1;
@@ -1784,6 +1588,8 @@ unsigned char keyb_proc(uButtons * key)
     tmpStep.b.TimeRange_30 =  1;
   };
 
+
+  // TODO(maxl0rd) refactor out clear up processing
   if (!key->b.ClearUp)  {
     //Init timer to detect long press (clear comman)
     InitClear_Timer();
@@ -1856,7 +1662,7 @@ unsigned char keyb_proc(uButtons * key)
   };
 
 
-
+  // TODO: refactor out left/right logic
   //switch to edit mode
   if ( !key->b.StepLeft ) {
     if (display_mode == DISPLAY_MODE_VIEW_1) {
@@ -1891,6 +1697,8 @@ unsigned char keyb_proc(uButtons * key)
         display_update_flags.b.StepsDisplay = 1;
       };
     };
+
+    // Split load/save left/right
 
     //if in save or load mode left buttons select memory cell for save/recall
     if ( (display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
@@ -2061,10 +1869,12 @@ unsigned char keyb_proc(uButtons * key)
   };
 
 
-
+  // Refactor out reset logic
   if ( (!key->b.StageAddress1Reset)  ) {
+
     if(afg1_mode != MODE_WAIT)
     {
+      // TODO(maxl0rd): call JumpToStep1() here
       afg1_step_num = 0;
       display_update_flags.b.MainDisplay = 1;
       display_update_flags.b.StepsDisplay = 1;
@@ -2078,6 +1888,7 @@ unsigned char keyb_proc(uButtons * key)
   if ( (!key->b.StageAddress2Reset)  ) {
     if(afg2_mode != MODE_WAIT)
     {
+      // TODO(maxl0rd): call JumpToStep2() here
       afg2_step_num = 0;
       display_update_flags.b.MainDisplay = 1;
       display_update_flags.b.StepsDisplay = 1;
@@ -2088,8 +1899,12 @@ unsigned char keyb_proc(uButtons * key)
     };
   }
 
+  // Refactor out the strobe logic
+
   if( key->b.Empty5 && strobe_banana_flag1 == 0)
   {
+    // Strobe
+    // TODO(maxl0rd): call JumpToStep1() here
     swing1 = 0;
     strobe_banana_flag1 = 1;
     afg1_step_num = (unsigned int) (pots_step[0]-1);
@@ -2102,11 +1917,13 @@ unsigned char keyb_proc(uButtons * key)
     DoStepOutputPulses1();
   }
 
+  // What key is Empty5 ?!?!?!
   if(!key->b.Empty5)
   {
     strobe_banana_flag1 = 0;
   }
   if ( (!key->b.StageAddress1PulseSelect) ) {
+    // TODO: WHAT IS THIS DOING?
     swing1 = 1;
     int cnt1;
     for(cnt1=0; cnt1<31; cnt1++)
@@ -2127,6 +1944,9 @@ unsigned char keyb_proc(uButtons * key)
 
   if( key->b.Empty2 && strobe_banana_flag2 == 0)
   {
+    // TODO: Is this ever reached? Doesn't the interrupt fire first?
+    // Strobe
+    // Call JumpToStep2() here
     strobe_banana_flag2 = 1;
 
 
@@ -2146,6 +1966,7 @@ unsigned char keyb_proc(uButtons * key)
   }
 
   if ( (!key->b.StageAddress2PulseSelect)) {
+    // WHAT DOES THIS DO?
     swing2 = 1;
 
     int cnt1;
@@ -2164,8 +1985,8 @@ unsigned char keyb_proc(uButtons * key)
   };
 
 
-  /* Stage address ADVANCE 1 KEY*/
   if (!key->b.StageAddress1ContiniousSelect) {
+    // WHAT DOES THIS DO?
     swing1 = 0;
     int cnt1;
     for(cnt1=0; cnt1<31; cnt1++)
@@ -2192,6 +2013,7 @@ unsigned char keyb_proc(uButtons * key)
   };
 
   if (!key->b.StageAddress2ContiniousSelect) {
+    // WHAT DOES THIS DO?
     swing2 = 0;
     int cnt1;
     for(cnt1=0; cnt1<31; cnt1++)
@@ -2216,8 +2038,9 @@ unsigned char keyb_proc(uButtons * key)
   };
 
   if (!key->b.StageAddress1Advance) {
-
-
+    // TODO: this logic seems wrong
+    // This is definitely the handler for advance switch
+    // Counter unused
     advanced_counter_1++;
 
     //		if(advanced_counter_1 == 10)
@@ -2226,6 +2049,7 @@ unsigned char keyb_proc(uButtons * key)
       {
         if(afg1_mode == MODE_RUN)
         {
+          // Call JumpToStep1() here instead
           afg1_prev_step_level = GetStepVoltage(0, afg1_step_num);
           afg1_step_num = GetNextStep(0, afg1_step_num);
           afg1_step_cnt = 0;
@@ -2243,7 +2067,8 @@ unsigned char keyb_proc(uButtons * key)
   else advanced_counter_1 = 0;
 
   if (!key->b.StageAddress2Advance) {
-
+    // TODO: this logic seems wrong
+    // Counter unused
     advanced_counter_2++;
     //		if(advanced_counter_2 == 10)
     {
@@ -2251,6 +2076,7 @@ unsigned char keyb_proc(uButtons * key)
       {
         if(afg2_mode == MODE_RUN)
         {
+          // Call JumpToStep2() here instead
           afg2_prev_step_level = GetStepVoltage(1, afg2_step_num);
           afg2_step_num = GetNextStep(1, afg2_step_num);
           afg2_step_cnt = 0;
@@ -2619,8 +2445,6 @@ int main(void)
   int i, j;
   long acc;
 
-
-
   /* Reset update states */
   display_update_flags.value = 0x00;
   display_update_flags.b.MainDisplay 	= 1;
@@ -2650,6 +2474,9 @@ int main(void)
 
   DipConfig_init();
   dip_config = GetDipConfig();
+
+  // Check for expander and memoize result for Is_Expander_Present() calls
+  Init_Expander();
 
   /* Out dip switch state to panel */
   LED_STEP_init();
@@ -2688,7 +2515,6 @@ int main(void)
   mInterruptInit();
 
   InternalDACInit();
-  Init_Expander_GPIO();
 
   afg1_mode = MODE_STOP;
   afg2_mode = MODE_STOP;
@@ -2697,7 +2523,7 @@ int main(void)
   versionInit();
   revision = versionRevised();
 
-  //Scan initial state
+  // Scan initial state
   key_state = GetButton();
   myButtons.value = key_state;
 
@@ -2713,44 +2539,24 @@ int main(void)
   }
   else
   {
-    // if not restore calibration constants from memory
+    // If not restore calibration constants from memory
+    // Pass in the pointer to the call_constants array from analog_data.c (slightly sketchy)
     CAT25512_read_block(100*sizeof(steps), (unsigned char *) cal_constants, sizeof(cal_constants));
-    for(i = 0; i < 8; i++) {
-      if (cal_constants[i] < 100) cal_constants[i] = 4095;
-      external_cal[i] = 4095.0 / (float) cal_constants[i];
-    }
+    PrecomputeCalibration();
 
     swapped_pulses = CAT25512_ReadByte(100*sizeof(steps)+sizeof(cal_constants));
   }
 
-  while (1) {
+  // Set magic for voltage scaling from dip switch state
+  SetVoltageRange(dip_config);
 
-    // Set magic numbers from dip switch state
-    if (dip_config.b.V_OUT_1V) {
-      // 1v per octave, who dis?
-      octave_offset = 409.5;
-      semitone_offset = 34.125;
-      quantizer_magic = 0.0293;
-      limited_range_multiplier = 0.1;
-    } else if (dip_config.b.V_OUT_1V2) {
-      // 1.2v per octave, the one true way
-      octave_offset = 491.4;
-      semitone_offset = 40.95;
-      quantizer_magic = 0.02442;
-      limited_range_multiplier = 0.12;
-    } else {
-      // 2v per octave for the OG's
-      octave_offset = 819.0;
-      semitone_offset = 68.25;
-      quantizer_magic = 0.01465;
-      limited_range_multiplier = 0.2;
-    }
+  while (1) {
 
     /* keys proceed */
     //		if (KeyThreshHoldCnt == 0) {
-    if ((uint16_t)(millis - key_timestamp) > KEY_TIMER) { // time to scan the switches
+    if ((uint16_t)(get_millis() - key_timestamp) > KEY_TIMER) { // time to scan the switches
       raw_key_state = GetButton();
-      key_timestamp = millis;
+      key_timestamp = get_millis();
       if (raw_key_state == key_state) {
         if (--keys_debounce == 0) { // stable now
           keys_stable = 1;
@@ -2797,10 +2603,12 @@ int main(void)
       display_update_flags.b.StepsDisplay = 0;
     };
 
+    // TODO(maxl0rd): factor this block out of main() into something like ComputeContinuousStep()
+    // Also, this block is inzane
     for(j = 0; j < 2; j++)
     {
       //Calculation of step number if external control is on
-      if(Is_Expander_Present()) max_step = 31;
+      if (Is_Expander_Present()) max_step = 31;
       else
       {
         max_step = 15;
@@ -2845,6 +2653,7 @@ int main(void)
       }
     }
 
+    // TODO(maxl0rd): factor start/stop processing out of main() into ProcessStopStartSignals()
     // process start-stop for AFG1
     prev_jackpins = jackpins;
     jackpins = GPIO_ReadInputData(GPIOB);
@@ -2860,7 +2669,7 @@ int main(void)
     }
     else if (stop1) {
       if (--stop1 == 0) { // stop1 window timed out
-        doStop1();
+        DoStop1();
       }
     }
     else if (start1) {
@@ -2868,7 +2677,6 @@ int main(void)
         DoStart1();
       }
     }
-
 
     if (!(prev_jackpins & (1<<1)) && (jackpins & (1<<1))) stop2 = EXTCLOCK_WINDOW; // stop jack rising edge
     if (!(prev_jackpins & (1<<6)) && (jackpins & (1<<6))) start2 = EXTCLOCK_WINDOW; // start jack rising edge
@@ -2882,7 +2690,7 @@ int main(void)
     }
     else if (stop2) {
       if (--stop2 == 0) { // stop1 window timed out
-        doStop2();
+        DoStop2();
       }
     }
     else if (start2) {
@@ -2893,34 +2701,4 @@ int main(void)
 
   }; // end main loop
 };
-
-void delay_ms(unsigned int ms)
-{
-  volatile uint32_t nCount;
-  RCC_ClocksTypeDef RCC_Clocks;
-  RCC_GetClocksFreq (&RCC_Clocks);
-
-  nCount=(RCC_Clocks.HCLK_Frequency/10000)*ms;
-  for (; nCount!=0; nCount--);
-}
-
-void delay_us(unsigned int us)
-{
-  volatile uint32_t nCount;
-  RCC_ClocksTypeDef RCC_Clocks;
-  RCC_GetClocksFreq (&RCC_Clocks);
-
-  nCount=(RCC_Clocks.HCLK_Frequency/10000000)*us;
-  for (; nCount!=0; nCount--);
-}
-
-void delay_ns(unsigned int ns)
-{
-  volatile uint32_t nCount;
-  RCC_ClocksTypeDef RCC_Clocks;
-  RCC_GetClocksFreq (&RCC_Clocks);
-
-  nCount=(RCC_Clocks.HCLK_Frequency/10000000000)*ns;
-  for (; nCount!=0; nCount--);
-}
 

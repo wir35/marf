@@ -1,3 +1,6 @@
+#ifndef __DATA_TYPES_H
+#define __DATA_TYPES_H
+
 /*
 	Main structure for step data type
 */
@@ -38,7 +41,7 @@ typedef union
 
 
 /*
-	PIO defines for device
+	GPIO defines for device
 */
 #define DISPLAY_LED_I				GPIO_Pin_6
 #define DISPLAY_LED_I_ON		GPIO_SetBits(GPIOA, DISPLAY_LED_I)
@@ -74,5 +77,4 @@ typedef union
 #define PULSE_LED_II_2_OFF			GPIO_SetBits(GPIOA, 	PULSE_LED_II_2)
 #define PULSE_LED_II_2_ON				GPIO_ResetBits(GPIOA, PULSE_LED_II_2)
 
-
-void UpdateModeSection(void);
+#endif

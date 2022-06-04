@@ -1,15 +1,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stm32f4xx_gpio.h>
+
 #include "HC165.h"
-
-
-// Timing delays for the shift register data
-// Experimental! Could be too short
-#define DELAY_CLOCK() ({ for (uint32_t d = 20; d != 0; d--) {} })
-#define DELAY_LATCH() ({ for (uint32_t d = 20; d != 0; d--) {} })
-#define DELAY_NOPS() ({asm("nop"); asm("nop");asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop");})
-
+#include "delays.h"
 
 
 #define SW_DAT	GPIO_Pin_0
