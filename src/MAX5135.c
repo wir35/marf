@@ -1,8 +1,10 @@
+#include "MAX5135.h"
+
 #include <stm32f4xx_rcc.h>
 #include <stm32f4xx_spi.h>
 #include <stm32f4xx_gpio.h>
 
-#include "MAX5135.h"
+#include "delays.h"
 
 void SendData(unsigned char mData)
 {

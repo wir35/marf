@@ -126,3 +126,24 @@ uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
 
   return ret_val;
 };
+
+// Calculate the number of next step.
+// In the event that the end of a loop is reached,
+// the closest previous "first" step is next (or 0 if none).
+uint8_t GetNextStep(uint8_t section, uint8_t step_num) {
+  uint8_t next_step = step_num;
+
+  if (steps[section][step_num].b.CycleLast) {
+    // Current step is the end of a loop.
+    // Search backwards to the closest previous first step or 0
+    while (next_step > 0) {
+      if (steps[section][next_step].b.CycleFirst) break;
+      next_step--;
+    };
+  } else {
+    // Otherwise just advance 1 and check for wrap around
+    next_step++;
+    if (next_step > get_max_step()) next_step = 0;
+  }
+  return next_step;
+};

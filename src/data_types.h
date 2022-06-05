@@ -1,44 +1,6 @@
 #ifndef __DATA_TYPES_H
 #define __DATA_TYPES_H
 
-/*
-	Main structure for step data type
-*/
-typedef union
-{
-	struct {		
-		unsigned int VLevel:12;
-		unsigned int TLevel:12;
-		unsigned int Quantize:1;
-		unsigned int Sloped:1;
-		unsigned int FullRange:1;
-		unsigned int VoltageSource:1;
-		unsigned int Voltage0:1;
-		unsigned int Voltage2:1;
-		unsigned int Voltage4:1;
-		unsigned int Voltage6:1;
-		unsigned int Voltage8:1;
-		unsigned int OpModeSTOP:1;
-		unsigned int OpModeSUSTAIN:1;
-		unsigned int OpModeENABLE:1;
-		unsigned int CycleFirst:1;
-		unsigned int CycleLast:1;
-		unsigned int TimeRange_p03:1;
-		unsigned int TimeRange_p3:1;
-		unsigned int TimeRange_3:1;
-		unsigned int TimeRange_30:1;
-		unsigned int TimeSource:1;
-		unsigned int OutputPulse1:1;
-		unsigned int OutputPulse2:1;
-		unsigned int WaitVoltageSlider:1;
-		unsigned int WaitTimeSlider:1;
-		unsigned int Swing:1;
-		unsigned int NU4:1;
-	} b;
-	unsigned char val[6];
-} uStep;
-
-
 
 /*
 	GPIO defines for device

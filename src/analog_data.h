@@ -4,6 +4,15 @@
 #include <stm32f4xx.h>
 #include "dip_config.h"
 
+#define ADC_EXT_VOLTAGE_A     0x00
+#define ADC_EXT_VOLTAGE_B     0x01
+#define ADC_EXT_VOLTAGE_C     0x02
+#define ADC_EXT_VOLTAGE_D     0x03
+#define ADC_TIMEMULTIPLY_Ch_1 0x04
+#define ADC_TIMEMULTIPLY_Ch_2 0x05
+#define ADC_STAGEADDRESS_Ch_1 0x06
+#define ADC_STAGEADDRESS_Ch_2 0x07
+
 // Additional analog data exposed globally for now
 
 extern volatile uint16_t add_data[8];

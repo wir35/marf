@@ -21,95 +21,17 @@
 #include "program.h"
 #include "delays.h"
 #include "analog_data.h"
+#include "afg.h"
+#include "display.h"
 
 volatile uint8_t adc_pot_sel = 0;
-
-#define EXT_DAC_CH_0	0x00
-#define EXT_DAC_CH_1	0x01
-#define EXT_DAC_CH_2	0x02
-#define EXT_DAC_CH_3	0x03
-
-#define ADC_EXT_VOLTAGE_A			0x00
-#define ADC_EXT_VOLTAGE_B			0x01
-#define ADC_EXT_VOLTAGE_C			0x02
-#define ADC_EXT_VOLTAGE_D			0x03
-#define ADC_TIMEMULTIPLY_Ch_1	0x04
-#define ADC_TIMEMULTIPLY_Ch_2	0x05
-#define ADC_STAGEADDRESS_Ch_1	0x06
-#define ADC_STAGEADDRESS_Ch_2	0x07
-
-
-// Union with flags which allows to update different parts of panel
-typedef union {
-  struct {
-    unsigned char MainDisplay:1;
-    unsigned char StepsDisplay:1;
-    unsigned char OT1:1;
-    unsigned char OT2:1;
-    unsigned char OT3:1;
-    unsigned char OT4:1;
-    unsigned char OT5:1;
-    unsigned char OT6:1;
-  } b;
-  unsigned char value;
-} uDisplayUpdateFlag;
-
-volatile uDisplayUpdateFlag display_update_flags;
 
 #define SEQUENCER_DATA_SIZE (6*2*32)
 
 // Do the pulse LEDs need to be swapped? 
 unsigned char swapped_pulses = 0; 
 
-// Display modes
-#define DISPLAY_MODE_VIEW_1				0
-#define DISPLAY_MODE_VIEW_2				1
-#define DISPLAY_MODE_EDIT_1				2
-#define DISPLAY_MODE_EDIT_2				3
-#define DISPLAY_MODE_SAVE_1				4
-#define DISPLAY_MODE_SAVE_2				5
-#define DISPLAY_MODE_LOAD_1				6
-#define DISPLAY_MODE_LOAD_2				7
-
-// Current display mode
-volatile uint8_t display_mode = DISPLAY_MODE_VIEW_1;	
-
-// Current step number
-volatile uint8_t afg1_step_num = 0, afg2_step_num = 0;
-
-// Length of the current step in timer "ticks"
-volatile static uint32_t afg1_step_width = 0, afg2_step_width = 0;
-
-// Step counters
-volatile static uint32_t afg1_step_cnt = 0, afg2_step_cnt = 0;
-
 unsigned char edit_mode_step_num = 0;
-
-// Sequencer modes
-#define MODE_RUN	0
-#define MODE_WAIT	1
-#define MODE_STOP	2
-#define MODE_WAIT_STROBE 	3
-#define MODE_WAIT_HI_Z		4
-#define MODE_STAY_HI_Z		5
-#define MODE_ADVANCE			6
-
-// Sequencer modes
-volatile unsigned char afg1_mode = MODE_RUN;
-volatile unsigned char afg2_mode = MODE_RUN;
-volatile unsigned char afg1_prev_mode = MODE_RUN;
-volatile unsigned char afg2_prev_mode = MODE_RUN;
-volatile unsigned char afg1_advance = 0;
-volatile unsigned char afg2_advance = 0;
-
-// Modes for start condition
-#define START_MODE_ZERO				0
-#define START_MODE_WAIT_HI_Z	1
-#define START_MODE_HI_Z				2
-
-// Current mode for start condition
-volatile unsigned char afg1_start_mode = START_MODE_ZERO;
-volatile unsigned char afg2_start_mode = START_MODE_ZERO;
 
 volatile unsigned char strobe_key = 0;
 
@@ -117,23 +39,8 @@ volatile unsigned char strobe_key = 0;
 volatile unsigned char key_locked = 0;	
 volatile unsigned char keys_not_valid = 0;
 
-#define STEP_TIMER_FREQ_OUT		8000 // 250uSec per timer period
-#define STEP_TIMER_PRESCALER	(168000000/2/1/STEP_TIMER_FREQ_OUT)
-#define START_TIMER_SUSTAIN 	1	// 250 uSec
-
 //Dip switch state
 volatile uDipConfig dip_config;
-
-// The voltage level of the current step
-volatile unsigned int afg1_step_level = 0;
-volatile unsigned int afg2_step_level = 0;
-
-// The voltage level of the previous step
-volatile unsigned int afg1_prev_step_level = 0;
-volatile unsigned int afg2_prev_step_level = 0;
-
-volatile uint8_t pots_step[2] = {1,1};
-volatile uint8_t previous_step[2] = {1,1};
 
 unsigned char revision; 
 
@@ -346,26 +253,6 @@ void mInterruptInit(void) {
   EXTI_ClearITPendingBit(EXTI_Line7);
 };
 
-void DoStop1() {
-  if ((afg1_mode != MODE_WAIT && afg1_mode != MODE_WAIT_HI_Z && afg1_mode != MODE_STAY_HI_Z)) {
-    afg1_prev_mode = MODE_RUN;
-    afg1_mode = MODE_STOP;
-    swing1 = 0;
-    display_update_flags.b.MainDisplay 	= 1;
-    display_update_flags.b.StepsDisplay = 1;
-  };
-}
-
-void DoStop2() {
-  if (afg2_mode != MODE_WAIT && afg2_mode != MODE_WAIT_HI_Z && afg2_mode != MODE_STAY_HI_Z) {
-    afg2_prev_mode = MODE_RUN;
-    afg2_mode = MODE_STOP;
-    swing2 = 0;
-    display_update_flags.b.MainDisplay = 1;
-    display_update_flags.b.StepsDisplay = 1;
-  };
-}
-
 // AFG1 stop interrupt
 void EXTI0_IRQHandler() {
   // Handled in the main loop
@@ -378,34 +265,6 @@ void EXTI1_IRQHandler() {
   // Handled in the main loop
   // Not used for anything
   EXTI_ClearITPendingBit(EXTI_Line1);
-};
-
-// Start Timer 3 for AFG1 start pulse duration measurement
-// Only used when going into enable/sustain
-void InitStart_1_SignalTimer() {
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM3, ENABLE);
-
-  TIM3->PSC = STEP_TIMER_PRESCALER;
-  TIM3->ARR = START_TIMER_SUSTAIN;
-  TIM3->CNT = 0;
-  TIM3->DIER = TIM_DIER_UIE;
-  TIM3->CR1 |= TIM_CR1_CEN;
-
-  NVIC_EnableIRQ(TIM3_IRQn);
-};
-
-// Start Timer 7 for AFG2 start pulse duration measurement
-// Only used when going into enable/sustain
-void InitStart_2_SignalTimer() {
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM7, ENABLE);
-
-  TIM7->PSC = STEP_TIMER_PRESCALER;
-  TIM7->ARR = START_TIMER_SUSTAIN;
-  TIM7->CNT = 0;
-  TIM7->DIER = TIM_DIER_UIE;
-  TIM7->CR1 |= TIM_CR1_CEN;
-
-  NVIC_EnableIRQ(TIM7_IRQn);
 };
 
 // Start Timer 6 for clear switch measurement
@@ -422,133 +281,22 @@ void InitClear_Timer() {
   TIM_ITConfig(TIM6, TIM_IT_Update, ENABLE);
 };
 
-void DoStart1() {
-  if (afg1_mode != MODE_STAY_HI_Z
-      && afg1_mode != MODE_WAIT_HI_Z
-      && afg1_mode != MODE_WAIT
-      && afg1_mode != MODE_RUN) {
-    // Go into run
-    afg1_mode = MODE_RUN;
-    afg1_step_num = GetNextStep(0, afg1_step_num);
-    DoStepOutputPulses1();
-  }
 
-  if (afg1_mode == MODE_WAIT_HI_Z) {
-    // If waiting on enable step, start running again
-    InitStart_1_SignalTimer();
-    afg1_mode = MODE_RUN;
-    afg1_step_num = GetNextStep(0, afg1_step_num);
-    DoStepOutputPulses1();
-  }
-
-  if (afg1_mode == MODE_STAY_HI_Z) {
-    InitStart_1_SignalTimer();
-  };
-}
-
-void DoStart2() {
-  if (afg2_mode != MODE_STAY_HI_Z
-      && afg2_mode != MODE_WAIT_HI_Z
-      && afg2_mode != MODE_WAIT
-      && afg2_mode != MODE_RUN) {
-    afg2_mode = MODE_RUN;
-    afg2_step_num = GetNextStep(1, afg2_step_num);
-    DoStepOutputPulses2();
-  }
-  if(afg2_mode == MODE_WAIT_HI_Z) {
-    InitStart_2_SignalTimer();
-    afg2_mode = MODE_RUN;
-    afg2_step_num = GetNextStep(1, afg2_step_num);
-    DoStepOutputPulses2();
-  }
-
-  if(afg2_mode == MODE_STAY_HI_Z) {
-    InitStart_2_SignalTimer();
-  }
-}
-
-void JumpToStep1(unsigned int step) {
-  unsigned int OutputVoltage = 0;
-
-  // Sample and hold current output voltage value.
-  afg1_prev_step_level = afg1_step_level;
-
-  // Then update the step number to where ever we are strobing to
-  afg1_step_num = step;
-
-  // Reset step width
-  afg1_step_cnt = 0;
-
-  if (display_mode == DISPLAY_MODE_VIEW_1) {
-    display_update_flags.b.MainDisplay = 1;
-    display_update_flags.b.StepsDisplay = 1;
-  };
-
-  if (steps[0][afg1_step_num].b.Sloped ) {
-    // Sloped step, hold the value
-    OutputVoltage = afg1_prev_step_level;
-  } else {
-    // Stepped, immediately jump
-    OutputVoltage = GetStepVoltage(0, afg1_step_num);
-  }
-
-  // Set DAC channel 1 to AFG1 voltage out value
-  afg1_step_level = OutputVoltage;
-  DAC_SetChannel1Data(DAC_Align_12b_R, OutputVoltage);
-
-  // Set AFG1 time out value
-  MAX5135_DAC_send(EXT_DAC_CH_0, steps[0][afg1_step_num].b.TLevel >> 2);
-
-  // Set AFG1 reference out value
-  // (Slopes down from 1023 to 0 over the course of the step)
-  MAX5135_DAC_send(EXT_DAC_CH_1, 1023);
-
-  DoStepOutputPulses1();
-}
-
-/* Handle jumping to new stage. Keep in sync with 1. */
-void JumpToStep2(unsigned int step) {
-  unsigned int OutputVoltage = 0;
-
-  afg2_prev_step_level = afg2_step_level;
-  afg2_step_num = step;
-  afg2_step_cnt = 0;
-
-  if (display_mode == DISPLAY_MODE_VIEW_2) {
-    display_update_flags.b.MainDisplay = 1;
-    display_update_flags.b.StepsDisplay = 1;
-  };
-
-  if (steps[1][afg2_step_num].b.Sloped ) {
-    OutputVoltage = afg2_prev_step_level;
-  } else {
-    OutputVoltage = GetStepVoltage(1, afg2_step_num);
-  }
-
-  afg2_step_level = OutputVoltage;
-  DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
-
-  MAX5135_DAC_send(EXT_DAC_CH_2, steps[1][afg2_step_num].b.TLevel >> 2);
-  MAX5135_DAC_send(EXT_DAC_CH_3, 1023);
-
-  DoStepOutputPulses2();
-}
 
 // Interrupt handler for strobe signals.
 void EXTI9_5_IRQHandler() {
   // Strobe 1
   if (EXTI->PR & (1<<5)) {
-    JumpToStep1((unsigned int) (pots_step[0] - 1));
+    JumpToStep1((unsigned int) (afg1_stage_address));
     EXTI_ClearITPendingBit(EXTI_Line5);
   };
 
   // Strobe 2
   if (EXTI->PR & (1<<7)) {
-    JumpToStep2((unsigned int) (pots_step[1]-1));
+    JumpToStep2((unsigned int) (afg2_stage_address));
     EXTI_ClearITPendingBit(EXTI_Line7);
   };
-  display_update_flags.b.MainDisplay = 1;
-  display_update_flags.b.StepsDisplay = 1;
+  update_display();
 };
 
 
@@ -618,198 +366,17 @@ void LoadSequence(unsigned char SequenceCell)
 
 };
 
-// Calculate the number of next step
-uint8_t GetNextStep(uint8_t section, uint8_t step_num) {
-
-  uint8_t ret_val = 0;
-  uint8_t is_last = 0;
-  uint8_t tmp = 0;
-  uint8_t max_step;
-
-  if (Is_Expander_Present()) {
-    max_step = 31;
-  } else {
-    max_step = 15;
-    if(step_num > 15) return 0;
-  }
-
-  is_last = steps[section][step_num].b.CycleLast;
-
-  if (is_last != 0) {
-    // Current step is last step
-    for (tmp = 0; tmp <= max_step; tmp++) {
-      if (tmp<=step_num) {
-        if (steps[section][step_num-tmp].b.CycleFirst) {
-          ret_val = step_num-tmp;
-          break;
-        };
-      } else {
-        if (steps[section][max_step-(tmp-step_num)].b.CycleFirst) {
-          ret_val = max_step-(tmp-step_num);
-          break;
-        };
-      };
-
-      if (tmp == max_step) {
-        is_last = 0;
-      };
-    };
-  }
-
-  if (is_last == 0) {
-    if ( step_num >= max_step ) {
-      ret_val = 0;
-    } else {
-      ret_val = step_num+1;
-    };
-  };
-
-  return ret_val;
-};
-
 /*
 	Timer interrupt handler for AFG1 clock.
 	Every interrupt of Timer 4 triggers new output voltages and a check if the step has ended.
  */
 void TIM4_IRQHandler() {
 
-  // TODO(maxl0rd): rename locals
-  unsigned long int StepWidth_1 = 0; // Step width = number of timer ticks
-  float deltaVoltage = 0.0;
-  unsigned long OutputVoltage = 0;
-  unsigned char doPulses = 0; // 1 if pulses should fire
+  AfgTick1();
 
   // Clear interrupt flag for Timer 4
   TIM4->SR = (uint16_t) ~TIM_IT_Update;
 
-  // Calculate step duration and scaler for Timer 4.
-  // Units are kind of obscure here.
-  // TODO(maxl0rd): use precomputed calibration
-  StepWidth_1 = GetStepWidth(0, afg1_step_num);
-  TIM4->PSC = (uint16_t) (
-      (((((float) add_data[ADC_TIMEMULTIPLY_Ch_1]) * 3.5f)
-          / cal_constants[ADC_TIMEMULTIPLY_Ch_1]) + 0.5f)
-          * STEP_TIMER_PRESCALER);
-
-  if (afg1_step_cnt < StepWidth_1) {
-    afg1_step_cnt += 1;
-  };
-
-  // Check if we're at the end of the step
-  if ((afg1_step_cnt >= StepWidth_1)) {
-    // Sample and hold current step value	into PreviousStep for next step slope computation
-    afg1_prev_step_level = afg1_step_level;
-
-    // Reset step width
-    afg1_step_cnt = 0;
-
-    // Resolve mode change for step end
-
-    if ((afg1_mode == MODE_ADVANCE)) {
-      // Stop after advance
-      afg1_mode =  MODE_STOP;
-    };
-
-    if (steps[0][afg1_step_num].b.OpModeSTOP) {
-      // Stop step
-      afg1_prev_mode = afg1_mode;
-      afg1_mode = MODE_STOP;
-    };
-
-    if (steps[0][afg1_step_num].b.OpModeENABLE
-        && afg1_mode != MODE_WAIT_HI_Z)  {
-      // Enable step, check start banana
-      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) {
-        // Go into enable mode
-        afg1_prev_mode = afg1_mode;
-        afg1_mode = MODE_WAIT_HI_Z;
-      };
-    };
-
-    if (steps[0][afg1_step_num].b.OpModeSUSTAIN
-        && afg1_mode != MODE_STAY_HI_Z) {
-      // Sustain step, check start banana
-      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1)) {
-        // Go into sustain mode
-        afg1_prev_mode = afg1_mode;
-        afg1_mode = MODE_STAY_HI_Z;
-        InitStart_1_SignalTimer();
-      };
-    };
-
-    if (afg1_mode == MODE_RUN) {
-      // Advance to the next step
-      afg1_step_num = GetNextStep(0, afg1_step_num);
-      doPulses = 1;
-    };
-
-    if (afg1_mode == MODE_STOP && swing1) {
-      // Fire pulses again at end of step if "swing" is on
-      doPulses = 1;
-    }
-  };
-
-
-  if (afg1_mode == MODE_WAIT) {
-    // Continuous step address mode. Check if the step has changed.
-    if (afg1_step_num != (unsigned int) (pots_step[0] - 1)) {
-      // Sample and hold current voltage output value
-      afg1_prev_step_level = afg1_step_level;
-      afg1_step_num = (unsigned int) (pots_step[0]-1);
-      // Reset step width
-      afg1_step_cnt = 0;
-      doPulses = 1;
-    }
-  };
-
-  if (afg1_mode == MODE_WAIT_STROBE) {
-    // What does this do?
-    afg1_step_num = (unsigned int) (pots_step[0]-1);
-    afg1_mode = afg1_prev_mode;
-  }
-
-  if (display_mode == DISPLAY_MODE_VIEW_1) {
-    display_update_flags.b.MainDisplay = 1;
-    display_update_flags.b.StepsDisplay = 1;
-  };
-
-  // Now set output voltages
-  // Compute the current step's programmed voltage output
-  OutputVoltage = GetStepVoltage(0, afg1_step_num);
-
-  // If the step is sloped, then slope from PreviousStep to the new output value
-  if (steps[0][afg1_step_num].b.Sloped ) {
-    if (afg1_prev_step_level >= OutputVoltage) {
-      // Slope down
-      deltaVoltage = (float) (afg1_prev_step_level - OutputVoltage) / StepWidth_1;
-      OutputVoltage = afg1_prev_step_level - (unsigned int) (deltaVoltage * afg1_step_cnt);
-    } else if (OutputVoltage > afg1_prev_step_level) {
-      // Slope up
-      deltaVoltage =  (float) (OutputVoltage - afg1_prev_step_level) / StepWidth_1;
-      OutputVoltage = afg1_prev_step_level + (unsigned int) (deltaVoltage * afg1_step_cnt);
-    }
-  }
-
-  // Set DAC channel 1 to AFG1 voltage out value
-  afg1_step_level = OutputVoltage;
-  DAC_SetChannel1Data(DAC_Align_12b_R, OutputVoltage);
-
-  // Set AFG1 time out value
-  MAX5135_DAC_send(EXT_DAC_CH_0, steps[0][afg1_step_num].b.TLevel >> 2);
-
-  // Set AFG1 reference out value
-  // TODO(maxl0rd): check that MODE_ADVANCE is being set correctly in every case and that JumpToStep1() is called
-  if (afg1_mode == MODE_RUN || afg1_mode == MODE_ADVANCE) {
-    // (Slopes down from 1023 to 0 over the course of the step)
-    MAX5135_DAC_send(EXT_DAC_CH_1,
-        1023 - (unsigned int) ((1023.0 / (float) StepWidth_1) * ((float) afg1_step_cnt)));
-  } else {
-    // No reference output when not running
-    MAX5135_DAC_send(EXT_DAC_CH_1, 0);
-  }
-
-  // Now that output voltages are set, pulses can fire now
-  if (doPulses) DoStepOutputPulses1();
 };
 
 /*
@@ -818,147 +385,12 @@ void TIM4_IRQHandler() {
  */
 void TIM5_IRQHandler() {
 
-  // TODO(maxl0rd): rename locals
-  unsigned long int StepWidth_2 = 0;
-  float deltaVoltage = 0.0;
-  unsigned long OutputVoltage = 0;
-  unsigned char doPulses = 0;
-
-  StepWidth_2 = GetStepWidth(1, afg2_step_num);
-
-  // TODO(maxl0rd): use precomputed calibration
-  TIM5->PSC = (uint16_t) (
-      ((((add_data[ADC_TIMEMULTIPLY_Ch_2])*3.5)
-          / cal_constants[ADC_TIMEMULTIPLY_Ch_2])+0.5)
-          * STEP_TIMER_PRESCALER);
-
-  if (afg2_step_cnt < StepWidth_2) {
-    afg2_step_cnt += 1;
-  };
-
-  if ((afg2_step_cnt >= StepWidth_2)) {
-    afg2_prev_step_level = afg2_step_level;
-    afg2_step_cnt = 0;
-
-    if ((afg2_mode == MODE_ADVANCE)) {
-      afg2_mode =  MODE_STOP;
-    };
-
-    if (steps[1][afg2_step_num].b.OpModeSTOP) {
-      afg2_prev_mode = afg2_mode;
-      afg2_mode = MODE_STOP;
-    };
-
-    if (steps[1][afg2_step_num].b.OpModeENABLE
-        && afg2_mode != MODE_WAIT_HI_Z) {
-      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0)) {
-        afg2_prev_mode = afg2_mode;
-        afg2_mode = MODE_WAIT_HI_Z;
-      };
-    };
-
-    if ((steps[1][afg2_step_num].b.OpModeSUSTAIN
-        && afg2_mode != MODE_STAY_HI_Z)) {
-      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1)) {
-        afg2_prev_mode = afg2_mode;
-        afg2_mode = MODE_STAY_HI_Z;
-        InitStart_2_SignalTimer();
-      }
-    };
-
-    if (afg2_mode == MODE_RUN) {
-      afg2_step_num = GetNextStep(1, afg2_step_num);
-      doPulses = 1;
-    };
-
-    if (afg2_mode == MODE_STOP && swing2) {
-      doPulses = 1;
-    }
-  }
-
-  if (afg2_mode == MODE_WAIT) {
-    if (afg2_step_num != (unsigned int) (pots_step[1] - 1)) {
-      // Sample and hold current voltage output value
-      afg2_prev_step_level = afg2_step_level;
-      afg2_step_num = (unsigned int) (pots_step[1]-1);
-      // Reset step width
-      afg2_step_cnt = 0;
-      doPulses = 1;
-    }
-  };
-
-  if (afg2_mode == MODE_WAIT_STROBE) {
-    // What does this do?
-    afg2_step_num = (unsigned int) (pots_step[1]-1);
-    afg2_mode = afg2_prev_mode;
-  }
-
-  if (display_mode == DISPLAY_MODE_VIEW_2) {
-    display_update_flags.b.MainDisplay = 1;
-    display_update_flags.b.StepsDisplay = 1;
-  };
-
-  OutputVoltage = GetStepVoltage(1, afg2_step_num);
-
-  if (steps[1][afg2_step_num].b.Sloped ) {
-    if (afg2_prev_step_level >= OutputVoltage) {
-      deltaVoltage = (float) (afg2_prev_step_level - OutputVoltage) / StepWidth_2;
-      OutputVoltage = afg2_prev_step_level - (unsigned int) (deltaVoltage * afg2_step_cnt);
-    } else if (OutputVoltage > afg2_prev_step_level) {
-      // Slope up
-      deltaVoltage =  (float) (OutputVoltage - afg2_prev_step_level) / StepWidth_2;
-      OutputVoltage = afg2_prev_step_level + (unsigned int) (deltaVoltage * afg2_step_cnt);
-    }
-  }
-
-  afg2_step_level = OutputVoltage;
-  DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
-
-  MAX5135_DAC_send(EXT_DAC_CH_2, steps[1][afg2_step_num].b.TLevel >> 2);
-
-  // TODO(maxl0rd): check that MODE_ADVANCE is being set correctly in every case and that JumpToStep2() is called
-  if (afg2_mode == MODE_RUN || afg2_mode == MODE_ADVANCE) {
-    MAX5135_DAC_send(EXT_DAC_CH_3,
-        1023 - (unsigned int) (((float) 0x3FF/ (float) StepWidth_2) * ((float) afg2_step_cnt)));
-  } else {
-    MAX5135_DAC_send(EXT_DAC_CH_3, 0);
-  }
-
-  // Now that output voltages are set, pulses can fire now
-  if (doPulses) DoStepOutputPulses2();
+  AfgTick2();
 
   // Clear interrupt flag for Timer 5
   TIM5->SR = (uint16_t) ~TIM_IT_Update;
 };
 
-
-static inline void DoStepOutputPulses1() {
-  PULSE_LED_I_ALL_ON;
-
-  if (steps[0][afg1_step_num].b.OutputPulse1) {
-    PULSE_LED_I_1_ON;
-  };
-  if (steps[0][afg1_step_num].b.OutputPulse2) {
-    PULSE_LED_I_2_ON;
-  };
-
-  TIM_Cmd(TIM14, ENABLE);
-  TIM_SetCounter(TIM14, 0x00);
-}
-
-static inline void DoStepOutputPulses2() {
-  PULSE_LED_II_ALL_ON;
-
-  if (steps[1][afg2_step_num].b.OutputPulse1) {
-    PULSE_LED_II_1_ON;
-  };
-  if (steps[1][afg2_step_num].b.OutputPulse2) {
-    PULSE_LED_II_2_ON;
-  };
-
-  TIM_Cmd(TIM8, ENABLE);
-  TIM_SetCounter(TIM8, 0x00);
-}
 
 #define AIRCR_VECTKEY_MASK    ((uint32_t)0x05FA0000)
 
@@ -1070,11 +502,12 @@ void TIM8_TRG_COM_TIM14_IRQHandler(void)
 
 // Timer Interrupt handler for start scan
 // Section 1
-// TODO(maxl0rd):
 // This is only used when timer is started by sustain or enable mode
 void TIM3_IRQHandler()
 {
   TIM3->SR = (uint16_t) ~TIM_IT_Update;
+
+  // TODO(maxl0rd): definitely refactor this logic into afg.c
 
   if ( (afg1_mode == MODE_WAIT_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0) ) {
@@ -1106,12 +539,13 @@ void TIM3_IRQHandler()
 };
 
 // Section 2
-// TODO(maxl0rd):
 // This is only used when timer is started by sustain or enable mode
 
 void TIM7_IRQHandler()
 {
   TIM7->SR = (uint16_t) ~TIM_IT_Update;
+
+  // TODO(maxl0rd): definitely refactor this logic into afg.c
 
   if ( (afg2_mode == MODE_WAIT_HI_Z)
       && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0) ) {
@@ -1856,47 +1290,24 @@ unsigned char keyb_proc(uButtons * key)
     if (!key->b.StageAddress1Display) {
       if (display_mode != DISPLAY_MODE_VIEW_1) {
         display_mode = DISPLAY_MODE_VIEW_1;
-      };
-    };
+      }
+    }
 
 
     if (!key->b.StageAddress2Display) {
       if (display_mode != DISPLAY_MODE_VIEW_2) {
         display_mode = DISPLAY_MODE_VIEW_2;
         key_locked = 0;
-      };
-    };
-  };
-
-
-  // Refactor out reset logic
-  if ( (!key->b.StageAddress1Reset)  ) {
-
-    if(afg1_mode != MODE_WAIT)
-    {
-      // TODO(maxl0rd): call JumpToStep1() here
-      afg1_step_num = 0;
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-      if (afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
-        afg1_mode = afg1_prev_mode;
       }
-    };
-  };
+    }
+  }
 
+  if (!key->b.StageAddress1Reset) {
+    DoReset1();
+  }
 
-  if ( (!key->b.StageAddress2Reset)  ) {
-    if(afg2_mode != MODE_WAIT)
-    {
-      // TODO(maxl0rd): call JumpToStep2() here
-      afg2_step_num = 0;
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-
-      if (afg2_mode == MODE_WAIT_HI_Z || afg2_mode == MODE_STAY_HI_Z) {
-        afg2_mode = afg2_prev_mode;
-      }
-    };
+  if (!key->b.StageAddress2Reset) {
+    DoReset2();
   }
 
   // Refactor out the strobe logic
@@ -1907,7 +1318,7 @@ unsigned char keyb_proc(uButtons * key)
     // TODO(maxl0rd): call JumpToStep1() here
     swing1 = 0;
     strobe_banana_flag1 = 1;
-    afg1_step_num = (unsigned int) (pots_step[0]-1);
+    afg1_step_num = (unsigned int) (afg1_stage_address);
 
     if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
       display_update_flags.b.MainDisplay = 1;
@@ -1917,7 +1328,7 @@ unsigned char keyb_proc(uButtons * key)
     DoStepOutputPulses1();
   }
 
-  // What key is Empty5 ?!?!?!
+  // What key is Empty5 Is it strobe ?!?!?!
   if(!key->b.Empty5)
   {
     strobe_banana_flag1 = 0;
@@ -1932,7 +1343,7 @@ unsigned char keyb_proc(uButtons * key)
 
     }
 
-    afg1_step_num = (unsigned int) (pots_step[0]-1);
+    afg1_step_num = (unsigned int) (afg1_stage_address);
     if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
       display_update_flags.b.MainDisplay = 1;
       display_update_flags.b.StepsDisplay = 1;
@@ -1950,7 +1361,7 @@ unsigned char keyb_proc(uButtons * key)
     strobe_banana_flag2 = 1;
 
 
-    afg2_step_num = (unsigned int) (pots_step[1]-1);
+    afg2_step_num = (unsigned int) (afg2_stage_address);
     if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
       display_update_flags.b.MainDisplay = 1;
       display_update_flags.b.StepsDisplay = 1;
@@ -1975,7 +1386,7 @@ unsigned char keyb_proc(uButtons * key)
       steps[1][cnt1].b.Swing = 1;
 
     }
-    afg2_step_num = (unsigned int) (pots_step[1]-1);
+    afg2_step_num = (unsigned int) (afg2_stage_address);
     if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
       display_update_flags.b.MainDisplay = 1;
       display_update_flags.b.StepsDisplay = 1;
@@ -1986,111 +1397,26 @@ unsigned char keyb_proc(uButtons * key)
 
 
   if (!key->b.StageAddress1ContiniousSelect) {
-    // WHAT DOES THIS DO?
-    swing1 = 0;
-    int cnt1;
-    for(cnt1=0; cnt1<31; cnt1++)
-    {
-      steps[0][cnt1].b.Swing = 0;
-
-    }
-
-    if (afg1_mode != MODE_WAIT) {
-      afg1_prev_mode = afg1_mode;
-      afg1_mode = MODE_WAIT;
-      display_update_flags.b.MainDisplay = 1;
-      key_locked = 0;
-    };
+    EnableContinuousStageAddress1();
+    key_locked = 0;
   } else {
-    if (afg1_mode == MODE_WAIT) {
-      afg1_mode = afg1_prev_mode;
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-      key_locked = 0;
-    };
-
-
-  };
-
+    DisableContinuousStageAddress1();
+    key_locked = 0;
+  }
   if (!key->b.StageAddress2ContiniousSelect) {
-    // WHAT DOES THIS DO?
-    swing2 = 0;
-    int cnt1;
-    for(cnt1=0; cnt1<31; cnt1++)
-    {
-      steps[1][cnt1].b.Swing = 0;
-
-    }
-
-    if (afg2_mode != MODE_WAIT) {
-      afg2_prev_mode = afg2_mode;
-      afg2_mode = MODE_WAIT;
-      display_update_flags.b.MainDisplay = 1;
-      key_locked = 0;
-    };
+    EnableContinuousStageAddress2();
+    key_locked = 0;
   } else {
-    if (afg2_mode == MODE_WAIT) {
-      afg2_mode = afg2_prev_mode;
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-      key_locked = 0;
-    };
-  };
-
-  if (!key->b.StageAddress1Advance) {
-    // TODO: this logic seems wrong
-    // This is definitely the handler for advance switch
-    // Counter unused
-    advanced_counter_1++;
-
-    //		if(advanced_counter_1 == 10)
-    {
-      if(afg1_mode != MODE_WAIT)
-      {
-        if(afg1_mode == MODE_RUN)
-        {
-          // Call JumpToStep1() here instead
-          afg1_prev_step_level = GetStepVoltage(0, afg1_step_num);
-          afg1_step_num = GetNextStep(0, afg1_step_num);
-          afg1_step_cnt = 0;
-        }
-        else{
-          if(afg1_mode != MODE_STAY_HI_Z && afg1_mode != MODE_WAIT_HI_Z )(afg1_prev_mode = afg1_mode);
-
-          afg1_step_num = GetNextStep(0, afg1_step_num);
-        }
-        afg1_mode = MODE_STOP;
-        DoStepOutputPulses1();
-      }	}
+    DisableContinuousStageAddress2();
+    key_locked = 0;
   }
 
-  else advanced_counter_1 = 0;
-
+  if (!key->b.StageAddress1Advance) {
+    DoAdvance1();
+  }
   if (!key->b.StageAddress2Advance) {
-    // TODO: this logic seems wrong
-    // Counter unused
-    advanced_counter_2++;
-    //		if(advanced_counter_2 == 10)
-    {
-      if(afg2_mode != MODE_WAIT)
-      {
-        if(afg2_mode == MODE_RUN)
-        {
-          // Call JumpToStep2() here instead
-          afg2_prev_step_level = GetStepVoltage(1, afg2_step_num);
-          afg2_step_num = GetNextStep(1, afg2_step_num);
-          afg2_step_cnt = 0;
-        }
-        else
-        {
-          if(afg2_mode != MODE_STAY_HI_Z && afg2_mode != MODE_WAIT_HI_Z )(afg2_prev_mode = afg2_mode);
-          afg2_step_num = GetNextStep(1, afg2_step_num);
-        }
-        afg2_mode = MODE_STOP;
-        DoStepOutputPulses2();
-      }
-    }
-  }else advanced_counter_2 = 0;
+    DoAdvance2();
+  }
 
   if (keys_not_valid == 0) {
     steps[Section][StepNum] = tmpStep;
@@ -2105,6 +1431,7 @@ unsigned char keyb_proc(uButtons * key)
 
 /*
 	Update leds function
+	TODO: refactor this whole function into display.c
  */
 void UpdateModeSection(void)
 {
@@ -2256,6 +1583,7 @@ void UpdateModeSection(void)
 
 /*
 	Steps section leds update function
+	TODO(maxl0rd): refactor into display.c
  */
 void UpdateStepSection(void)
 {
@@ -2439,12 +1767,6 @@ int main(void)
   uint16_t keys_debounce =0;
   unsigned char keys_stable = 0;
 
-  //unsigned char KeyThreshHoldCnt = 0, max_step;
-  unsigned char max_step;
-  uint16_t  next_step_tres = 0, prev_step_tres = 0, temp;
-  int i, j;
-  long acc;
-
   /* Reset update states */
   display_update_flags.value = 0x00;
   display_update_flags.b.MainDisplay 	= 1;
@@ -2463,10 +1785,8 @@ int main(void)
     steps[1][_cnt] = steps[0][0];
   };
 
-  //Debug stuff
   RCC_GetClocksFreq(&RCC_Clocks);
 
-  // SysTick is my new idea
   systickInit(1000);
 
   PulsesInit();
@@ -2579,16 +1899,8 @@ int main(void)
       }
     };
 
-    //		if (KeyThreshHoldCnt == 2) {
-
-
-    /* KeyThreshHoldCnt++; */
-    /* if (KeyThreshHoldCnt > 2) { */
-    /* 	KeyThreshHoldCnt = 0; */
-    /* }; */
-    /* ENDOF: keys proceed */
-
-    //Update panel state
+    // Update panel state
+    // TODO(maxl0rd): Refactor into display.c
     if (display_update_flags.b.MainDisplay) {
       UpdateModeSection();
       display_update_flags.b.MainDisplay = 0;
@@ -2603,90 +1915,41 @@ int main(void)
       display_update_flags.b.StepsDisplay = 0;
     };
 
-    // TODO(maxl0rd): factor this block out of main() into something like ComputeContinuousStep()
-    // Also, this block is inzane
-    for(j = 0; j < 2; j++)
-    {
-      //Calculation of step number if external control is on
-      if (Is_Expander_Present()) max_step = 31;
-      else
-      {
-        max_step = 15;
-        if(pots_step[j] > 16) pots_step[j] = 1;
-      }
+    // Compute continuous stage address
+    ComputeContinuousStep1();
+    ComputeContinuousStep2();
 
-      next_step_tres = 0;
-      prev_step_tres = 0;
-
-      previous_step[j] = pots_step[j];
-
-      if(pots_step[j] < (max_step+1)) next_step_tres = (pots_step[j])*cal_constants[ADC_STAGEADDRESS_Ch_1+j]/(max_step+1) + 20;
-      if(pots_step[j] > 1) prev_step_tres = (pots_step[j]-1)*cal_constants[ADC_STAGEADDRESS_Ch_1+j]/(max_step+1) - 20;
-
-      acc = 0;
-      for(i =0; i<10; i++)
-      {
-        if(j == 0)
-        {
-          //					temp = (AddData[ADC_STAGEADDRESS_Ch_1]*4095/CalConstants[ADC_STAGEADDRESS_Ch_1]);
-          temp = (add_data[ADC_STAGEADDRESS_Ch_1]);
-          if(temp > 4095) temp = 4095;
-          acc += temp;
-        }
-        else
-        {
-          //					temp = (AddData[ADC_STAGEADDRESS_Ch_2]*4095/CalConstants[ADC_STAGEADDRESS_Ch_2]);
-          temp = (add_data[ADC_STAGEADDRESS_Ch_2]);
-          if(temp > 4095) temp = 4095;
-          acc += temp;
-        }
-      }
-      if(pots_step[j] < (max_step+1)) {if(acc/10 > next_step_tres)
-      {
-        pots_step[j]++;
-      }
-      }
-      if(pots_step[j] > 1) {if(acc/10 < prev_step_tres)
-      {
-        pots_step[j]--;
-      }
-      }
-    }
-
-    // TODO(maxl0rd): factor start/stop processing out of main() into ProcessStopStartSignals()
-    // process start-stop for AFG1
+    // Process Stop and Start signals
     prev_jackpins = jackpins;
     jackpins = GPIO_ReadInputData(GPIOB);
     if (!(prev_jackpins & 1) && (jackpins & 1)) stop1 = EXTCLOCK_WINDOW; // stop jack rising edge
     if (!(prev_jackpins & (1<<8)) && (jackpins & (1<<8))) start1 = EXTCLOCK_WINDOW; // start jack rising edge
-    if (stop1 && start1) { // both signals high means external clock
-      // Advance
-      afg1_mode = MODE_ADVANCE;
-      JumpToStep1(GetNextStep(0, afg1_step_num));
+    if (stop1 && start1) {
+      // Both start + stop high triggers an advance, same as the advance switch
+      DoAdvance1();
       stop1 = 0;
       start1 = 0;
-      // Aha! Now need to wait until pin goes low before unsticking
     }
     else if (stop1) {
-      if (--stop1 == 0) { // stop1 window timed out
+      if (--stop1 == 0) {
+        // stop1 window timed out
         DoStop1();
       }
     }
     else if (start1) {
-      if (--start1 == 0) { // start1 window timed out
+      if (--start1 == 0) {
+        // start1 window timed out
         DoStart1();
       }
     }
 
     if (!(prev_jackpins & (1<<1)) && (jackpins & (1<<1))) stop2 = EXTCLOCK_WINDOW; // stop jack rising edge
     if (!(prev_jackpins & (1<<6)) && (jackpins & (1<<6))) start2 = EXTCLOCK_WINDOW; // start jack rising edge
-    if (stop2 && start2) { // both signals high means external clock
-      // Advance
-      afg2_mode = MODE_ADVANCE;
-      JumpToStep2(GetNextStep(1, afg2_step_num));
+    if (stop2 && start2) {
+      // Both start + stop high triggers an advance, same as the advance switch
+      DoAdvance2();
       stop2 = 0;
       start2 = 0;
-      // Aha! Now need to wait until pin goes low before unsticking
     }
     else if (stop2) {
       if (--stop2 == 0) { // stop1 window timed out

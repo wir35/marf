@@ -7,7 +7,7 @@
 volatile uint16_t add_data[8];
 
 // Stored calibration
-volatile uint16_t cal_constants[8] = {0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF,0xFFF};
+volatile uint16_t cal_constants[8] = {0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF};
 
 // Calibration scalers for external inputs, precomputed in setup
 float external_cal[8] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};

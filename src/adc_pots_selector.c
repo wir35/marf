@@ -1,7 +1,9 @@
+#include "adc_pots_selector.h"
+
 #include <stm32f4xx_gpio.h>
 #include <stdlib.h>
-#include <string.h>
-#include "adc_pots_selector.h"
+#include <string.h> // memset
+
 #include "delays.h"
 
 #define ADC_PS_SH_PIN	GPIO_Pin_13
