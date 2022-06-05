@@ -503,76 +503,20 @@ void TIM8_TRG_COM_TIM14_IRQHandler(void)
   }
 }
 
-// Timer Interrupt handler for start scan
-// Section 1
+// Timer Interrupt handler for start scan section 1
 // This is only used when timer is started by sustain or enable mode
-void TIM3_IRQHandler()
-{
+void TIM3_IRQHandler() {
   TIM3->SR = (uint16_t) ~TIM_IT_Update;
 
-  // TODO(maxl0rd): definitely refactor this logic into afg.c
-
-  if ( (afg1_mode == MODE_WAIT_HI_Z)
-      && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0) ) {
-  }
-  else if((afg1_mode == MODE_WAIT_HI_Z)
-      && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1))
-  {
-    afg1_mode = MODE_RUN;
-    afg1_step_num = GetNextStep(0, afg1_step_num);
-    TIM3->CR1 &= ~TIM_CR1_CEN;
-  }
-
-  if((afg1_mode == MODE_STAY_HI_Z)
-      && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1))
-  {
-
-
-  }
-  else if((afg1_mode == MODE_STAY_HI_Z)
-      && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0))
-  {
-
-
-    afg1_mode = MODE_RUN;
-    afg1_step_num = GetNextStep(0, afg1_step_num);
-    TIM3->CR1 &= ~TIM_CR1_CEN;
-    DoStepOutputPulses1();
-  }
+  if (CheckStart1()) TIM3->CR1 &= ~TIM_CR1_CEN;
 };
 
-// Section 2
+// Timer Interrupt handler for start scan section 1
 // This is only used when timer is started by sustain or enable mode
-
-void TIM7_IRQHandler()
-{
+void TIM7_IRQHandler() {
   TIM7->SR = (uint16_t) ~TIM_IT_Update;
 
-  // TODO(maxl0rd): definitely refactor this logic into afg.c
-
-  if ( (afg2_mode == MODE_WAIT_HI_Z)
-      && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0) ) {
-  }
-  else if((afg2_mode == MODE_WAIT_HI_Z)
-      && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1))
-  {
-    afg2_mode = MODE_RUN;
-    afg2_step_num = GetNextStep(1, afg2_step_num);
-    TIM7->CR1 &= ~TIM_CR1_CEN;
-  }
-
-  if((afg2_mode == MODE_STAY_HI_Z)
-      && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1))
-  {
-  }
-  else if((afg2_mode == MODE_STAY_HI_Z)
-      && (GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0))
-  {
-    afg2_mode = MODE_RUN;
-    afg2_step_num = GetNextStep(1, afg2_step_num);
-    TIM7->CR1 &= ~TIM_CR1_CEN;
-    DoStepOutputPulses2();
-  }
+  if (CheckStart2()) TIM7->CR1 &= ~TIM_CR1_CEN;
 };
 
 // Clear switch scan

@@ -71,6 +71,8 @@ void DoStop1();
 void DoStop2();
 void DoStart1();
 void DoStart2();
+uint8_t CheckStart1();
+uint8_t CheckStart2();
 
 inline void DoAdvance1() {
   if (afg1_mode != MODE_WAIT) {

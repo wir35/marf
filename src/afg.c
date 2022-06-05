@@ -85,18 +85,15 @@ void DoStop2() {
 }
 
 void DoStart1() {
-  if (afg1_mode != MODE_STAY_HI_Z
-      && afg1_mode != MODE_WAIT_HI_Z
-      && afg1_mode != MODE_WAIT
-      && afg1_mode != MODE_RUN) {
-    // Go into run
+  if (afg1_mode == MODE_STOP || afg1_mode == MODE_ADVANCE) {
+    // Start run
     afg1_mode = MODE_RUN;
     afg1_step_num = GetNextStep(0, afg1_step_num);
     DoStepOutputPulses1();
   }
 
   if (afg1_mode == MODE_WAIT_HI_Z) {
-    // If waiting on enable step, start running again
+    // If on enable step, start running again if high
     InitStart_1_SignalTimer();
     afg1_mode = MODE_RUN;
     afg1_step_num = GetNextStep(0, afg1_step_num);
@@ -104,15 +101,36 @@ void DoStart1() {
   }
 
   if (afg1_mode == MODE_STAY_HI_Z) {
+    // Sustain step, check start
     InitStart_1_SignalTimer();
   };
 }
 
+// Returns 1 when starting running again
+uint8_t CheckStart1() {
+  uint8_t start_signal = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1;
+  uint8_t run_again = 0;
+
+  if (afg1_mode == MODE_WAIT_HI_Z && start_signal) {
+    // Enable with start high, start running
+    run_again = 1;
+  }
+  if (afg1_mode == MODE_STAY_HI_Z && !start_signal) {
+    // Sustain step with start low, start running again
+    run_again = 1;
+  }
+  if (run_again) {
+    afg1_mode = MODE_RUN;
+    afg1_step_num = GetNextStep(0, afg1_step_num);
+    DoStepOutputPulses1();
+    return 1;
+  } else {
+    return 0;
+  }
+}
+
 void DoStart2() {
-  if (afg2_mode != MODE_STAY_HI_Z
-      && afg2_mode != MODE_WAIT_HI_Z
-      && afg2_mode != MODE_WAIT
-      && afg2_mode != MODE_RUN) {
+  if (afg2_mode == MODE_STOP || afg2_mode == MODE_ADVANCE) {
     afg2_mode = MODE_RUN;
     afg2_step_num = GetNextStep(1, afg2_step_num);
     DoStepOutputPulses2();
@@ -126,6 +144,29 @@ void DoStart2() {
 
   if(afg2_mode == MODE_STAY_HI_Z) {
     InitStart_2_SignalTimer();
+  }
+}
+
+// Returns 1 when starting running again
+uint8_t CheckStart2() {
+  uint8_t start_signal = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1;
+  uint8_t run_again = 0;
+
+  if (afg2_mode == MODE_WAIT_HI_Z && start_signal) {
+    // Enable with start high, start running
+    run_again = 1;
+  }
+  if (afg2_mode == MODE_STAY_HI_Z && !start_signal) {
+    // Sustain step with start low, start running again
+    run_again = 1;
+  }
+  if (run_again) {
+    afg2_mode = MODE_RUN;
+    afg2_step_num = GetNextStep(1, afg2_step_num);
+    DoStepOutputPulses2();
+    return 1;
+  } else {
+    return 0;
   }
 }
 
