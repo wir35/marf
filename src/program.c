@@ -1,9 +1,9 @@
 #include "program.h"
 
 #include <stm32f4xx.h>
-#include "stdio.h"
 
 #include "analog_data.h"
+#include "HC165.h"
 
 // Main step programming
 volatile uStep steps[2][32];
@@ -124,7 +124,6 @@ uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
     step_width *= 0.1;
   }
 
-  printf("step width %d", (int) step_width);
   return (uint32_t) step_width;
 };
 
@@ -148,3 +147,169 @@ uint8_t GetNextStep(uint8_t section, uint8_t step_num) {
   }
   return next_step;
 };
+
+// Apply switch programming directly to the step data
+// Low value means that the switch is selected/active
+void ApplyProgrammingSwitches(uint8_t section, uint8_t step_num, uButtons* switches) {
+
+  volatile uStep* step = &steps[section][step_num];
+
+  if ( !switches->b.Voltage0 ) {
+    step->b.Voltage0 = 1;
+    step->b.Voltage2 = 0;
+    step->b.Voltage4 = 0;
+    step->b.Voltage6 = 0;
+    step->b.Voltage8 = 0;
+    step->b.FullRange = 0;
+  };
+  if ( !switches->b.Voltage2 ) {
+    step->b.Voltage0 = 0;
+    step->b.Voltage2 = 1;
+    step->b.Voltage4 = 0;
+    step->b.Voltage6 = 0;
+    step->b.Voltage8 = 0;
+    step->b.FullRange = 0;
+  };
+  if ( !switches->b.Voltage4 ) {
+    step->b.Voltage0 = 0;
+    step->b.Voltage2 = 0;
+    step->b.Voltage4 = 1;
+    step->b.Voltage6 = 0;
+    step->b.Voltage8 = 0;
+    step->b.FullRange = 0;
+  };
+  if ( !switches->b.Voltage6 ) {
+    step->b.Voltage0 = 0;
+    step->b.Voltage2 = 0;
+    step->b.Voltage4 = 0;
+    step->b.Voltage6 = 1;
+    step->b.Voltage8 = 0;
+    step->b.FullRange = 0;
+  };
+  if ( !switches->b.Voltage8 ) {
+    step->b.Voltage0 = 0;
+    step->b.Voltage2 = 0;
+    step->b.Voltage4 = 0;
+    step->b.Voltage6 = 0;
+    step->b.Voltage8 = 1;
+    step->b.FullRange = 0;
+  };
+  if ( !switches->b.FullRangeOn ) {
+    step->b.Voltage0 = 0;
+    step->b.Voltage2 = 0;
+    step->b.Voltage4 = 0;
+    step->b.Voltage6 = 0;
+    step->b.Voltage8 = 0;
+    step->b.FullRange = 1;
+  };
+  if ( !switches->b.Pulse1On ) {
+    step->b.OutputPulse1 = 1;
+  };
+  if ( !switches->b.Pulse1Off ) {
+    step->b.OutputPulse1 = 0;
+  };
+  if ( !switches->b.Pulse2On ) {
+    step->b.OutputPulse2 = 1;
+  };
+  if ( !switches->b.Pulse2Off ) {
+    step->b.OutputPulse2 = 0;
+  };
+  if ( !switches->b.OutputQuantize ) {
+    step->b.Quantize = 1;
+  };
+  if ( !switches->b.OutputContinuous ) {
+    step->b.Quantize = 0;
+  };
+  if ( !switches->b.IntegrationSloped ) {
+    step->b.Sloped = 1;
+  };
+  if ( !switches->b.IntegrationStepped ) {
+    step->b.Sloped = 0;
+  };
+  if ( !switches->b.SourceExternal ) {
+    step->b.VoltageSource = 1;
+  };
+  if ( !switches->b.SourceInternal ) {
+    step->b.VoltageSource = 0;
+  };
+  if ( !switches->b.StopOn ) {
+    step->b.OpModeSTOP = 1;
+    step->b.OpModeENABLE = 0;
+    step->b.OpModeSUSTAIN = 0;
+  };
+  if ( !switches->b.StopOff ) {
+    step->b.OpModeSTOP = 0;
+  };
+  if ( !switches->b.SustainOn ) {
+    step->b.OpModeSUSTAIN = 1;
+    step->b.OpModeSTOP = 0;
+    step->b.OpModeENABLE = 0;
+  };
+  if ( !switches->b.SustainOff ) {
+    step->b.OpModeSUSTAIN = 0;
+  };
+  if ( !switches->b.EnableOn ) {
+    step->b.OpModeENABLE = 1;
+    step->b.OpModeSTOP = 0;
+    step->b.OpModeSUSTAIN = 0;
+  };
+  if ( !switches->b.EnableOff ) {
+    step->b.OpModeENABLE = 0;
+  };
+  if ( !switches->b.FirstOn ) {
+    step->b.CycleFirst = 1;
+    step->b.CycleLast = 0;
+  };
+  if ( !switches->b.FirstOff ) {
+    step->b.CycleFirst = 0;
+  };
+  if ( !switches->b.LastOn ) {
+    step->b.CycleLast = 1;
+    step->b.CycleFirst = 0;
+  };
+  if ( !switches->b.LastOff ) {
+    step->b.CycleLast = 0;
+  };
+  if ( !switches->b.TimeSourceExternal ) {
+    step->b.TimeSource = 1;
+  };
+  if ( !switches->b.TimeSourceInternal ) {
+    step->b.TimeSource = 0;
+  };
+  if (!switches->b.TimeRange1) {
+    step->b.TimeRange_p03 = 1;
+    step->b.TimeRange_p3 =  0;
+    step->b.TimeRange_3 =   0;
+    step->b.TimeRange_30 =  0;
+  };
+  if (!switches->b.TimeRange2) {
+    step->b.TimeRange_p03 = 0;
+    step->b.TimeRange_p3 =  1;
+    step->b.TimeRange_3 =   0;
+    step->b.TimeRange_30 =  0;
+  };
+  if (!switches->b.TimeRange3) {
+    step->b.TimeRange_p03 = 0;
+    step->b.TimeRange_p3 =  0;
+    step->b.TimeRange_3 =   1;
+    step->b.TimeRange_30 =  0;
+  };
+  if (!switches->b.TimeRange4) {
+    step->b.TimeRange_p03 = 0;
+    step->b.TimeRange_p3 =  0;
+    step->b.TimeRange_3 =   0;
+    step->b.TimeRange_30 =  1;
+  };
+}
+
+void ClearProgram(uint8_t section) {
+   steps[section][0].val[3] = 0x00;
+   steps[section][0].val[4] = 0x00;
+   steps[section][0].val[5] = 0x00;
+   steps[section][0].b.TimeRange_p3 = 1;
+   steps[section][0].b.FullRange = 1;
+   for(uint8_t i=0; i < 16; i++) {
+     steps[section][i] = steps[0][0];
+     steps[section][i+16] = steps[0][0];
+   }
+}

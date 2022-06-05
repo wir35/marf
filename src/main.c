@@ -520,9 +520,7 @@ void TIM7_IRQHandler() {
 };
 
 // Clear switch scan
-void TIM6_DAC_IRQHandler()
-{
-  uint8_t i;
+void TIM6_DAC_IRQHandler() {
   uButtons myButtons;
   static uint8_t clear_counter1 = 0, clear_counter2 = 0;
 
@@ -565,42 +563,13 @@ void TIM6_DAC_IRQHandler()
     TIM_SetCounter(TIM6, 0x00);
     TIM6->CR1 &= ~TIM_CR1_CEN;
 
-
-
-    if(clear_counter1 == 30)
-    {
-      //Clear section 1 state
-
-      steps[0][0].val[3] = 0x00;
-      steps[0][0].val[4] = 0x00;
-      steps[0][0].val[5] = 0x00;
-      steps[0][0].b.TimeRange_p3 = 1;
-      steps[0][0].b.FullRange = 1;
-
-      for(i=0; i<16; i++)
-      {
-        steps[0][i] = steps[0][0];
-        steps[0][i+16] = steps[0][0];
-      }
-      afg1_mode = MODE_STOP;
-      afg1_step_num = 0;
+    if(clear_counter1 == 30) {
+      ClearProgram(0);
+      HardStop1();
     }
-    else if(clear_counter2 == 30)
-    {
-      //Clear section 2 state
-
-      steps[1][0].val[3] = 0x00;
-      steps[1][0].val[4] = 0x00;
-      steps[1][0].val[5] = 0x00;
-      steps[1][0].b.TimeRange_p3 = 1;
-      steps[1][0].b.FullRange = 1;
-      for(i=0; i<16; i++)
-      {
-        steps[1][i] = steps[1][0];
-        steps[1][i+16] = steps[1][0];
-      };
-      afg2_mode = MODE_STOP;
-      afg2_step_num = 0;
+    else if(clear_counter2 == 30) {
+      ClearProgram(1);
+      HardStop2();
     };
 
     clear_counter1 = 0;
@@ -647,8 +616,6 @@ void PulsesInit()
   PULSE_LED_II_1_OFF;
   PULSE_LED_II_2_OFF;
 };
-
-
 
 /*
 Init GPIOs for display leds
@@ -705,274 +672,51 @@ void InternalDACInit(void)
 // TODO(maxl0rd): figure out a way to break this up.
 unsigned char keyb_proc(uButtons * key)
 {
-  unsigned char StepNum = 0, Section = 0, max_step;
-  uStep tmpStep;
+  unsigned char step_num = 0, section = 0;
+  uint8_t max_step = get_max_step();
 
-  if(Is_Expander_Present()) max_step = 31;
-  else max_step = 15;
-
-  /* Determine step num for different DisplayModes */
+  // Determine step num for different display modes
   if (display_mode == DISPLAY_MODE_VIEW_1) {
-    StepNum = afg1_step_num;
-    Section = 0;
+    step_num = afg1_step_num;
+    section = 0;
   };
   if (display_mode == DISPLAY_MODE_VIEW_2) {
-    StepNum = afg2_step_num;
-    Section = 1;
+    step_num = afg2_step_num;
+    section = 1;
   };
   if (display_mode == DISPLAY_MODE_EDIT_1) {
-    StepNum = edit_mode_step_num;
-    Section = 0;
+    step_num = edit_mode_step_num;
+    section = 0;
   };
   if (display_mode == DISPLAY_MODE_EDIT_2) {
-    StepNum = edit_mode_step_num;
-    Section = 1;
+    step_num = edit_mode_step_num;
+    section = 1;
   };
 
   if (display_mode == DISPLAY_MODE_SAVE_1) {
-    StepNum = edit_mode_step_num;
-    Section = 0;
+    step_num = edit_mode_step_num;
+    section = 0;
   };
   if (display_mode == DISPLAY_MODE_SAVE_2) {
-    StepNum = edit_mode_step_num;
-    Section = 1;
+    step_num = edit_mode_step_num;
+    section = 1;
   };
   if (display_mode == DISPLAY_MODE_LOAD_1) {
-    StepNum = edit_mode_step_num;
-    Section = 0;
+    step_num = edit_mode_step_num;
+    section = 0;
   };
   if (display_mode == DISPLAY_MODE_LOAD_2) {
-    StepNum = edit_mode_step_num;
-    Section = 1;
+    step_num = edit_mode_step_num;
+    section = 1;
   };
 
-  tmpStep = steps[Section][StepNum];
+  // Apply programming from switches to active step
+  ApplyProgrammingSwitches(section, step_num, key);
 
+  // TODO(maxl0rd): refactor out clear logic
 
-  // Programming section
-  // TODO(maxl0rd): extract this into a function that takes tmpStep and key
-
-  if ( !key->b.Voltage0 ) {
-    tmpStep.b.Voltage0 = 1;
-    tmpStep.b.Voltage2 = 0;
-    tmpStep.b.Voltage4 = 0;
-    tmpStep.b.Voltage6 = 0;
-    tmpStep.b.Voltage8 = 0;
-    tmpStep.b.FullRange = 0;
-  };
-
-  if ( !key->b.Voltage2 ) {
-    tmpStep.b.Voltage0 = 0;
-    tmpStep.b.Voltage2 = 1;
-    tmpStep.b.Voltage4 = 0;
-    tmpStep.b.Voltage6 = 0;
-    tmpStep.b.Voltage8 = 0;
-    tmpStep.b.FullRange = 0;
-  };
-
-  if ( !key->b.Voltage4 ) {
-    tmpStep.b.Voltage0 = 0;
-    tmpStep.b.Voltage2 = 0;
-    tmpStep.b.Voltage4 = 1;
-    tmpStep.b.Voltage6 = 0;
-    tmpStep.b.Voltage8 = 0;
-    tmpStep.b.FullRange = 0;
-  };
-
-  if ( !key->b.Voltage6 ) {
-    tmpStep.b.Voltage0 = 0;
-    tmpStep.b.Voltage2 = 0;
-    tmpStep.b.Voltage4 = 0;
-    tmpStep.b.Voltage6 = 1;
-    tmpStep.b.Voltage8 = 0;
-    tmpStep.b.FullRange = 0;
-  };
-
-  if ( !key->b.Voltage8 ) {
-    tmpStep.b.Voltage0 = 0;
-    tmpStep.b.Voltage2 = 0;
-    tmpStep.b.Voltage4 = 0;
-    tmpStep.b.Voltage6 = 0;
-    tmpStep.b.Voltage8 = 1;
-    tmpStep.b.FullRange = 0;
-  };
-
-  if ( !key->b.FullRangeOn ) {
-    tmpStep.b.Voltage0 = 0;
-    tmpStep.b.Voltage2 = 0;
-    tmpStep.b.Voltage4 = 0;
-    tmpStep.b.Voltage6 = 0;
-    tmpStep.b.Voltage8 = 0;
-    tmpStep.b.FullRange = 1;
-  };
-
-  if ( !key->b.Pulse1On ) {
-    tmpStep.b.OutputPulse1 = 1;
-  };
-
-  if ( !key->b.Pulse1Off ) {
-    tmpStep.b.OutputPulse1 = 0;
-  };
-
-  if ( !key->b.Pulse2On ) {
-    tmpStep.b.OutputPulse2 = 1;
-  };
-
-  if ( !key->b.Pulse2Off ) {
-    tmpStep.b.OutputPulse2 = 0;
-  };
-
-  if ( !key->b.OutputQuantize ) {
-    tmpStep.b.Quantize = 1;
-  };
-
-  if ( !key->b.OutputContinuous ) {
-    tmpStep.b.Quantize = 0;
-  };
-
-  if ( !key->b.IntegrationSloped ) {
-    tmpStep.b.Sloped = 1;
-  };
-
-  if ( !key->b.IntegrationStepped ) {
-    tmpStep.b.Sloped = 0;
-  };
-
-  if ( !key->b.SourceExternal ) {
-    tmpStep.b.VoltageSource = 1;
-
-  };
-
-  if ( !key->b.SourceInternal ) {
-    tmpStep.b.VoltageSource = 0;
-
-  };
-
-  if ( !key->b.StopOn ) {
-    tmpStep.b.OpModeSTOP = 1;
-    tmpStep.b.OpModeENABLE = 0;
-    tmpStep.b.OpModeSUSTAIN = 0;
-    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_STAY_HI_Z) {
-      afg1_mode = MODE_STOP;
-    };
-    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_STAY_HI_Z) {
-      afg2_mode = MODE_STOP;
-    };
-    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_WAIT_HI_Z) {
-      afg1_mode = MODE_STOP;
-    };
-    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_WAIT_HI_Z) {
-      afg2_mode = MODE_STOP;
-    };
-  };
-
-  if ( !key->b.StopOff ) {
-    tmpStep.b.OpModeSTOP = 0;
-    /* Determine step num for different DisplayModes */
-  };
-
-  if ( !key->b.SustainOn ) {
-    tmpStep.b.OpModeSUSTAIN = 1;
-    tmpStep.b.OpModeSTOP = 0;
-    tmpStep.b.OpModeENABLE = 0;
-    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_WAIT_HI_Z) {
-      afg1_mode = afg1_prev_mode;
-    };
-    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_WAIT_HI_Z) {
-      afg2_mode = afg2_prev_mode;
-    };
-  };
-
-  if ( !key->b.SustainOff ) {
-    tmpStep.b.OpModeSUSTAIN = 0;
-    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_STAY_HI_Z) {
-      afg1_mode = afg1_prev_mode;
-    };
-    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_STAY_HI_Z) {
-      afg2_mode = afg2_prev_mode;
-    };
-  };
-
-  if ( !key->b.EnableOn ) {
-    tmpStep.b.OpModeENABLE = 1;
-    tmpStep.b.OpModeSTOP = 0;
-    tmpStep.b.OpModeSUSTAIN = 0;
-    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_STAY_HI_Z) {
-      afg1_mode = afg1_prev_mode;
-    };
-    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_STAY_HI_Z) {
-      afg2_mode = afg2_prev_mode;
-    };
-  };
-
-  if ( !key->b.EnableOff ) {
-    tmpStep.b.OpModeENABLE = 0;
-    if ((display_mode == DISPLAY_MODE_VIEW_1 || display_mode == DISPLAY_MODE_EDIT_1) && afg1_mode == MODE_WAIT_HI_Z) {
-      afg1_mode = afg1_prev_mode;
-    };
-    if ((display_mode == DISPLAY_MODE_VIEW_2 || display_mode == DISPLAY_MODE_EDIT_2) && afg2_mode == MODE_WAIT_HI_Z) {
-      afg2_mode = afg2_prev_mode;
-    };
-  };
-
-  if ( !key->b.FirstOn ) {
-    tmpStep.b.CycleFirst = 1;
-    tmpStep.b.CycleLast = 0;
-  };
-
-  if ( !key->b.FirstOff ) {
-    tmpStep.b.CycleFirst = 0;
-  };
-
-  if ( !key->b.LastOn ) {
-    tmpStep.b.CycleLast = 1;
-    tmpStep.b.CycleFirst = 0;
-  };
-
-  if ( !key->b.LastOff ) {
-    tmpStep.b.CycleLast = 0;
-  };
-
-  if ( !key->b.TimeSourceExternal ) {
-    tmpStep.b.TimeSource = 1;
-  };
-
-  if ( !key->b.TimeSourceInternal ) {
-    tmpStep.b.TimeSource = 0;
-  };
-
-  if (!key->b.TimeRange1) {
-    tmpStep.b.TimeRange_p03 = 1;
-    tmpStep.b.TimeRange_p3 =  0;
-    tmpStep.b.TimeRange_3 =   0;
-    tmpStep.b.TimeRange_30 =  0;
-  };
-
-  if (!key->b.TimeRange2) {
-    tmpStep.b.TimeRange_p03 = 0;
-    tmpStep.b.TimeRange_p3 =  1;
-    tmpStep.b.TimeRange_3 =   0;
-    tmpStep.b.TimeRange_30 =  0;
-  };
-
-  if (!key->b.TimeRange3) {
-    tmpStep.b.TimeRange_p03 = 0;
-    tmpStep.b.TimeRange_p3 =  0;
-    tmpStep.b.TimeRange_3 =   1;
-    tmpStep.b.TimeRange_30 =  0;
-  };
-
-  if (!key->b.TimeRange4) {
-    tmpStep.b.TimeRange_p03 = 0;
-    tmpStep.b.TimeRange_p3 =  0;
-    tmpStep.b.TimeRange_3 =   0;
-    tmpStep.b.TimeRange_30 =  1;
-  };
-
-
-  // TODO(maxl0rd) refactor out clear up processing
   if (!key->b.ClearUp)  {
-    //Init timer to detect long press (clear comman)
+    // Init timer to detect long press (clear command)
     InitClear_Timer();
     if (display_mode == DISPLAY_MODE_LOAD_1) {
       //if in load mode, restore sequence number gEditModeStepNum
@@ -1366,7 +1110,6 @@ unsigned char keyb_proc(uButtons * key)
   }
 
   if (keys_not_valid == 0) {
-    steps[Section][StepNum] = tmpStep;
     display_update_flags.b.MainDisplay = 1;
   } else {
     keys_not_valid = 0;

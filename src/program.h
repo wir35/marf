@@ -7,6 +7,7 @@
 #include "data_types.h"
 #include "expander.h"
 #include "analog_data.h"
+#include "HC165.h"
 
 // Main structure for step data type
 // TODO (maxl0rd) eventually separate VLevel and TLevel out of this
@@ -69,5 +70,9 @@ uint16_t GetStepVoltage(uint8_t section, uint8_t step_num);
 uint32_t GetStepWidth(uint8_t section, uint8_t step_num);
 
 uint8_t GetNextStep(uint8_t section, uint8_t step_num);
+
+void ApplyProgrammingSwitches(uint8_t section, uint8_t step_num, uButtons *switches);
+
+void ClearProgram(uint8_t section);
 
 #endif

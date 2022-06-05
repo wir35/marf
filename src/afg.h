@@ -67,12 +67,27 @@ void JumpToStep2(unsigned int step);
 
 // Clock mode control
 
+// Handle stop signal
 void DoStop1();
 void DoStop2();
+
+// Handle start signal
 void DoStart1();
 void DoStart2();
+
+// Check timer after handling start signal
 uint8_t CheckStart1();
 uint8_t CheckStart2();
+
+inline void HardStop1() {
+  afg1_mode = MODE_STOP;
+  afg1_step_num = 0;
+}
+
+inline void HardStop2() {
+  afg2_mode = MODE_STOP;
+  afg2_step_num = 0;
+}
 
 inline void DoAdvance1() {
   if (afg1_mode != MODE_WAIT) {

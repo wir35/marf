@@ -89,6 +89,7 @@ void DoStart1() {
     // Start run
     afg1_mode = MODE_RUN;
     afg1_step_num = GetNextStep(0, afg1_step_num);
+    update_display();
     DoStepOutputPulses1();
   }
 
@@ -97,6 +98,7 @@ void DoStart1() {
     InitStart_1_SignalTimer();
     afg1_mode = MODE_RUN;
     afg1_step_num = GetNextStep(0, afg1_step_num);
+    update_display();
     DoStepOutputPulses1();
   }
 
@@ -133,12 +135,14 @@ void DoStart2() {
   if (afg2_mode == MODE_STOP || afg2_mode == MODE_ADVANCE) {
     afg2_mode = MODE_RUN;
     afg2_step_num = GetNextStep(1, afg2_step_num);
+    update_display();
     DoStepOutputPulses2();
   }
   if(afg2_mode == MODE_WAIT_HI_Z) {
     InitStart_2_SignalTimer();
     afg2_mode = MODE_RUN;
     afg2_step_num = GetNextStep(1, afg2_step_num);
+    update_display();
     DoStepOutputPulses2();
   }
 
