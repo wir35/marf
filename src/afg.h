@@ -56,9 +56,9 @@ extern volatile uint8_t afg1_stage_address;
 extern volatile uint8_t afg2_stage_address;
 
 // Timing constants
-#define STEP_TIMER_FREQ_OUT   8000 // 250uSec per timer period "tick"
-#define STEP_TIMER_PRESCALER  (168000000/2/1/STEP_TIMER_FREQ_OUT)
-#define START_TIMER_SUSTAIN   1 // 250 uSec or "1 tick"
+#define STEP_TIMER_FREQ_OUT   8000    // 250uSec per timer period "tick"
+#define STEP_TIMER_PRESCALER  168000000/2/1/STEP_TIMER_FREQ_OUT // 10500.0 // (168000000/2/1/STEP_TIMER_FREQ_OUT)
+#define START_TIMER_SUSTAIN   1       // 250 uSec or "1 tick"
 
 // Jump steps
 
@@ -177,6 +177,17 @@ inline void DisableContinuousStageAddress2() {
     afg2_mode = afg2_prev_mode;
     update_display();
   }
+}
+
+// ([0 - 4095] / 4095) * 3.5 + 0.5
+#define TIME_MULTIPLIER_SCALER 0.0008547
+
+inline float GetTimeMultiplier1() {
+  return read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_1) * TIME_MULTIPLIER_SCALER + 0.5f;
+}
+
+inline float GetTimeMultiplier2() {
+  return read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_2) * TIME_MULTIPLIER_SCALER + 0.5f;
 }
 
 #endif

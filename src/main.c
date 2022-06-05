@@ -371,12 +371,13 @@ void LoadSequence(unsigned char SequenceCell)
 	Every interrupt of Timer 4 triggers new output voltages and a check if the step has ended.
  */
 void TIM4_IRQHandler() {
-
   AfgTick1();
+
+  // Adjust timer prescaler for time multiplier
+  TIM4->PSC = (uint16_t) (GetTimeMultiplier1() * STEP_TIMER_PRESCALER);
 
   // Clear interrupt flag for Timer 4
   TIM4->SR = (uint16_t) ~TIM_IT_Update;
-
 };
 
 /*
@@ -384,8 +385,10 @@ void TIM4_IRQHandler() {
   Keep in sync with TIM4_IRQHandler().
  */
 void TIM5_IRQHandler() {
-
   AfgTick2();
+
+  // Adjust timer prescaler for time multiplier
+  TIM5->PSC = (uint16_t) (GetTimeMultiplier2() * STEP_TIMER_PRESCALER);
 
   // Clear interrupt flag for Timer 5
   TIM5->SR = (uint16_t) ~TIM_IT_Update;
