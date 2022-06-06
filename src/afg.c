@@ -77,7 +77,7 @@ void DoStop1() {
 }
 
 void DoStop2() {
-  if (afg1_mode == MODE_RUN) {
+  if (afg2_mode == MODE_RUN) {
     afg2_prev_mode = MODE_RUN;
     afg2_mode = MODE_STOP;
     update_display();
@@ -88,6 +88,7 @@ void DoStart1() {
   if (afg1_mode == MODE_STOP || afg1_mode == MODE_ADVANCE) {
     // Start run
     afg1_mode = MODE_RUN;
+    afg1_step_num = GetNextStep(0, afg1_step_num);
     update_display();
     DoStepOutputPulses1();
   }
@@ -134,6 +135,7 @@ void DoStart2() {
   if (afg2_mode == MODE_STOP || afg2_mode == MODE_ADVANCE) {
     afg2_mode = MODE_RUN;
     update_display();
+    afg2_step_num = GetNextStep(1, afg2_step_num);
     DoStepOutputPulses2();
   }
   if(afg2_mode == MODE_WAIT_HI_Z) {
@@ -243,7 +245,6 @@ void JumpToStep2(unsigned int step) {
 
 // Take the GPIO data directly, detect rising edges and trigger stop, start and advance
 void ProcessStopStart(uint16_t gpiob_data) {
-  previous_gpiob_data = gpiob_data;
   // Detect rising edge on stop and start signals and set down counter
   if (!(previous_gpiob_data & 1) && (gpiob_data & 1)) stop1_counter = START_STOP_WINDOW;
   if (!(previous_gpiob_data & (1<<8)) && (gpiob_data & (1<<8))) start1_counter = START_STOP_WINDOW;
@@ -271,8 +272,30 @@ void ProcessStopStart(uint16_t gpiob_data) {
   else if (start2_counter && --start2_counter == 0) {
     DoStart2();
   }
-
+  previous_gpiob_data = gpiob_data;
 }
+
+void DoStrobe1() {
+  uint8_t start_signal = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1;
+  JumpToStep1(afg1_stage_address);
+  if (start_signal) {
+    // Handle a special case where start + strobe are high together
+    // If we let the start logic run normally then we'll end up on step n+1
+    // So go directly into run mode here, and the subsequent start handler will do nothing
+    afg1_mode = MODE_RUN;
+  }
+  update_display();
+}
+
+void DoStrobe2() {
+  uint8_t start_signal = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1;
+  JumpToStep2(afg2_stage_address);
+  if (start_signal) {
+    afg2_mode = MODE_RUN;
+  }
+  update_display();
+}
+
 /*
   Every tick triggers new output voltages and a check if the step has ended.
  */

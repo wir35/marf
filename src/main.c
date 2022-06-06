@@ -274,21 +274,18 @@ void InitClear_Timer() {
 
 // Interrupt handler for strobe signals.
 void EXTI9_5_IRQHandler() {
-  // Strobe 1
   if (EXTI->PR & (1<<5)) {
-    JumpToStep1((unsigned int) (afg1_stage_address));
+    // Strobe signal 1 high
+    DoStrobe1();
     EXTI_ClearITPendingBit(EXTI_Line5);
   };
 
-  // Strobe 2
   if (EXTI->PR & (1<<7)) {
-    JumpToStep2((unsigned int) (afg2_stage_address));
+    // Strobe 2 signal high
+    DoStrobe2();
     EXTI_ClearITPendingBit(EXTI_Line7);
   };
-  update_display();
 };
-
-
 
 /*
 	Save current sequence to memory
@@ -977,99 +974,22 @@ unsigned char ProcessSwitchesActivity(uButtons * key)
     }
   }
 
+  // Only do one of reset, strobe or advance
   if (!key->b.StageAddress1Reset) {
     DoReset1();
+  } else if (!key->b.StageAddress1PulseSelect) {
+    DoStrobe1();
+  } else if (!key->b.StageAddress1Advance) {
+    DoAdvance1();
   }
 
   if (!key->b.StageAddress2Reset) {
     DoReset2();
-  }
-
-  // Refactor out the strobe logic
-
-  if( key->b.Empty5 && strobe_banana_flag1 == 0)
-  {
-    // Strobe
-    // TODO(maxl0rd): call JumpToStep1() here
-    swing1 = 0;
-    strobe_banana_flag1 = 1;
-    afg1_step_num = (unsigned int) (afg1_stage_address);
-
-    if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-    };
-
-    DoStepOutputPulses1();
-  }
-
-  // What key is Empty5 Is it strobe ?!?!?!
-  if(!key->b.Empty5)
-  {
-    strobe_banana_flag1 = 0;
-  }
-  if ( (!key->b.StageAddress1PulseSelect) ) {
-    // TODO: WHAT IS THIS DOING?
-    swing1 = 1;
-    int cnt1;
-    for(cnt1=0; cnt1<31; cnt1++)
-    {
-      steps[0][cnt1].b.Swing = 1;
-
-    }
-
-    afg1_step_num = (unsigned int) (afg1_stage_address);
-    if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-    };
-
-    DoStepOutputPulses1();
+  } else if ( (!key->b.StageAddress2PulseSelect)) {
+    DoStrobe2();
+  } else if (!key->b.StageAddress2Advance) {
+    DoAdvance2();
   };
-
-
-  if( key->b.Empty2 && strobe_banana_flag2 == 0)
-  {
-    // TODO: Is this ever reached? Doesn't the interrupt fire first?
-    // Strobe
-    // Call JumpToStep2() here
-    strobe_banana_flag2 = 1;
-
-
-    afg2_step_num = (unsigned int) (afg2_stage_address);
-    if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-    };
-
-    DoStepOutputPulses2();
-  }
-
-  if(!key->b.Empty2)
-  {
-    strobe_banana_flag2 = 0;
-
-  }
-
-  if ( (!key->b.StageAddress2PulseSelect)) {
-    // WHAT DOES THIS DO?
-    swing2 = 1;
-
-    int cnt1;
-    for(cnt1=0; cnt1<31; cnt1++)
-    {
-      steps[1][cnt1].b.Swing = 1;
-
-    }
-    afg2_step_num = (unsigned int) (afg2_stage_address);
-    if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-    };
-
-    DoStepOutputPulses2();
-  };
-
 
   if (!key->b.StageAddress1ContiniousSelect) {
     EnableContinuousStageAddress1();
@@ -1078,19 +998,13 @@ unsigned char ProcessSwitchesActivity(uButtons * key)
     DisableContinuousStageAddress1();
     key_locked = 0;
   }
+
   if (!key->b.StageAddress2ContiniousSelect) {
     EnableContinuousStageAddress2();
     key_locked = 0;
   } else {
     DisableContinuousStageAddress2();
     key_locked = 0;
-  }
-
-  if (!key->b.StageAddress1Advance) {
-    DoAdvance1();
-  }
-  if (!key->b.StageAddress2Advance) {
-    DoAdvance2();
   }
 
   if (keys_not_valid == 0) {
@@ -1101,9 +1015,6 @@ unsigned char ProcessSwitchesActivity(uButtons * key)
 
   return 1;
 }
-
-
-
 
 void PermutePulses(void)
 {

@@ -80,6 +80,10 @@ void DoStart2();
 uint8_t CheckStart1();
 uint8_t CheckStart2();
 
+// Handle strobe signal
+void DoStrobe1();
+void DoStrobe2();
+
 inline void HardStop1() {
   afg1_mode = MODE_STOP;
   afg1_step_num = 0;
