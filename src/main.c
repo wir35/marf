@@ -724,15 +724,13 @@ unsigned char ProcessSwitchesActivity(uButtons * key)
       //if in view mode switch to load mode
       display_mode = DISPLAY_MODE_LOAD_1;
       edit_mode_step_num = 0;
-      display_update_flags.b.StepsDisplay = 1;
-      display_update_flags.b.MainDisplay = 1;
+      update_display();
     }
     else if (display_mode == DISPLAY_MODE_VIEW_2) {
       //if in view mode switch to load mode
       display_mode = DISPLAY_MODE_LOAD_2;
       edit_mode_step_num = 0;
-      display_update_flags.b.StepsDisplay = 1;
-      display_update_flags.b.MainDisplay = 1;
+      update_display();
     };
   };
 
@@ -768,16 +766,16 @@ unsigned char ProcessSwitchesActivity(uButtons * key)
   };
 
 
-  // TODO: refactor out left/right logic
+  // TODO: refactor out left/right logic into a controller module
   //switch to edit mode
   if ( !key->b.StepLeft ) {
     if (display_mode == DISPLAY_MODE_VIEW_1) {
       display_mode = DISPLAY_MODE_EDIT_1;
-      edit_mode_step_num = 1;
+      edit_mode_step_num += 1;
     };
     if (display_mode == DISPLAY_MODE_VIEW_2) {
       display_mode = DISPLAY_MODE_EDIT_2;
-      edit_mode_step_num = 1;
+      edit_mode_step_num += 1;
     };
     if ( (display_mode == DISPLAY_MODE_EDIT_1) ||
         (display_mode == DISPLAY_MODE_EDIT_2) ) {
@@ -864,11 +862,10 @@ unsigned char ProcessSwitchesActivity(uButtons * key)
   if ( !key->b.StepRight ) {
     if (display_mode == DISPLAY_MODE_VIEW_1) {
       display_mode = DISPLAY_MODE_EDIT_1;
-      edit_mode_step_num = max_step;
-    };
-    if (display_mode == DISPLAY_MODE_VIEW_2) {
+      edit_mode_step_num -= 1;
+    } else if (display_mode == DISPLAY_MODE_VIEW_2) {
       display_mode = DISPLAY_MODE_EDIT_2;
-      edit_mode_step_num = max_step;
+      edit_mode_step_num -= 1;
     };
     if ( (display_mode == DISPLAY_MODE_EDIT_1) ||
         (display_mode == DISPLAY_MODE_EDIT_2) ) {

@@ -110,14 +110,18 @@ void UpdateModeSectionLeds(uint8_t edit_mode_step_num, uint8_t bank) {
 
   switch (display_mode) {
   case DISPLAY_MODE_VIEW_1:
-  case DISPLAY_MODE_EDIT_1:
     UpdateLedsProgramMode(&mLeds, (uStep*) &steps[0][afg1_step_num]);
     UpdateStepSection(afg1_step_num);
+  case DISPLAY_MODE_EDIT_1:
+    UpdateLedsProgramMode(&mLeds, (uStep*) &steps[0][edit_mode_step_num]);
+    UpdateStepSection(edit_mode_step_num);
     break;
   case DISPLAY_MODE_VIEW_2:
-  case DISPLAY_MODE_EDIT_2:
     UpdateLedsProgramMode(&mLeds, (uStep*) &steps[1][afg2_step_num]);
     UpdateStepSection(afg2_step_num);
+  case DISPLAY_MODE_EDIT_2:
+    UpdateLedsProgramMode(&mLeds, (uStep*) &steps[1][edit_mode_step_num]);
+    UpdateStepSection(edit_mode_step_num);
     break;
   case DISPLAY_MODE_SAVE_1:
   case DISPLAY_MODE_LOAD_1:
