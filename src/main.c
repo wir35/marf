@@ -28,9 +28,6 @@ volatile uint8_t adc_pot_sel = 0;
 
 #define SEQUENCER_DATA_SIZE (6*2*32)
 
-// Do the pulse LEDs need to be swapped? 
-unsigned char swapped_pulses = 0; 
-
 unsigned char edit_mode_step_num = 0;
 
 volatile unsigned char strobe_key = 0;
@@ -46,9 +43,8 @@ unsigned char revision;
 
 // Current patches bank
 volatile unsigned char bank = 1;
+
 volatile unsigned char strobe_banana_flag1 = 0, strobe_banana_flag2 = 0;
-volatile unsigned int save_counter = 0, load_counter = 0;
-volatile unsigned char advanced_counter_1 = 0, advanced_counter_2 = 0;
 
 uint16_t counterL = 0; 
 uint16_t counterR = 0;
@@ -1119,180 +1115,7 @@ unsigned char keyb_proc(uButtons * key)
 }
 
 
-/*
-	Update leds function
-	TODO: refactor this whole function into display.c
- */
-void UpdateModeSection(void)
-{
-  unsigned char StepNum = 0, Section = 0;
-  uLeds mLeds;
-  uStep *mStep;
 
-  mLeds.value[0] = 0xFF;
-  mLeds.value[1] = 0xFF;
-  mLeds.value[2] = 0xFF;
-  mLeds.value[3] = 0xFF;
-
-  if ((afg1_mode == MODE_RUN) ||
-      (afg1_mode == MODE_ADVANCE)) {
-    mLeds.b.Seq1Run = 0;
-  };
-  if ( (afg1_mode == MODE_WAIT) ||
-      (afg1_mode == MODE_WAIT_HI_Z ) ||
-      (afg1_mode == MODE_STAY_HI_Z)  ) {
-    mLeds.b.Seq1Wait = 0;
-  };
-
-  if (afg1_mode == MODE_STOP) {
-    mLeds.b.Seq1Stop = 0;
-  };
-
-  if ((afg2_mode == MODE_RUN) ||
-      (afg2_mode == MODE_ADVANCE) ) {
-    mLeds.b.Seq2Run = 0;
-  };
-  if ((afg2_mode == MODE_WAIT) ||
-      (afg2_mode == MODE_WAIT_HI_Z ) ||
-      (afg2_mode == MODE_STAY_HI_Z) ) {
-    mLeds.b.Seq2Wait = 0;
-  };
-  if (afg2_mode == MODE_STOP) {
-    mLeds.b.Seq2Stop = 0;
-  };
-
-
-  /* Determine step num for different DisplayModes*/
-  if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
-    StepNum = afg1_step_num;
-    Section = 0;
-  }
-  if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
-    StepNum = afg2_step_num;
-    Section = 1;
-  };
-  if ( display_mode == DISPLAY_MODE_EDIT_1 ) {
-    StepNum = edit_mode_step_num;
-    Section = 0;
-  }
-  if ( display_mode == DISPLAY_MODE_EDIT_2 ) {
-    StepNum = edit_mode_step_num;
-    Section = 1;
-  };
-
-  mStep = (uStep*) &steps[Section][StepNum];
-
-  mLeds.b.VoltageFull  	= ~mStep->b.FullRange;
-  mLeds.b.Voltage0     	= ~mStep->b.Voltage0;
-  mLeds.b.Voltage2     	= ~mStep->b.Voltage2;
-  mLeds.b.Voltage4     	= ~mStep->b.Voltage4;
-  mLeds.b.Voltage6     	= ~mStep->b.Voltage6;
-  mLeds.b.Voltage8     	= ~mStep->b.Voltage8;
-  if (swapped_pulses) {
-    mLeds.b.Pulse1       	= ~mStep->b.OutputPulse2; //hack for Gate1 Gate2 leds
-    mLeds.b.Pulse2       	= ~mStep->b.OutputPulse1;
-  }
-  else {
-    mLeds.b.Pulse1       	= ~mStep->b.OutputPulse1;
-    mLeds.b.Pulse2       	= ~mStep->b.OutputPulse2;
-  }
-  mLeds.b.CycleFirst   	= ~mStep->b.CycleFirst;
-  mLeds.b.CycleLast    	= ~mStep->b.CycleLast;
-  mLeds.b.VoltageSource = ~mStep->b.VoltageSource;
-  mLeds.b.Integration   = ~mStep->b.Sloped;
-  mLeds.b.Quantization  = ~mStep->b.Quantize;
-  mLeds.b.TimeRange0   	= ~mStep->b.TimeRange_p03;
-  mLeds.b.TimeRange1   	= ~mStep->b.TimeRange_p3;
-  mLeds.b.TimeRange2   	= ~mStep->b.TimeRange_3;
-  mLeds.b.TimeRange3   	= ~mStep->b.TimeRange_30;
-  mLeds.b.TimeSource   	= ~mStep->b.TimeSource;
-  mLeds.b.OPStop       	= ~mStep->b.OpModeSTOP;
-  mLeds.b.OPSustain    	= ~mStep->b.OpModeSUSTAIN;
-  mLeds.b.OPEnable     	= ~mStep->b.OpModeENABLE;
-
-  if ( (display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
-      (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2) ) {
-    mLeds.value[0] = 0xFF;
-    mLeds.value[1] = 0xFF;
-    mLeds.value[2] = 0xFF;
-    mLeds.value[3] = 0xFF;
-
-    if((display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2))
-    {
-      mLeds.b.Seq2Wait = 1;
-      save_counter++;
-      if(save_counter < 1500)
-      {
-        mLeds.b.Seq1Wait = 0;
-      }
-      else if(save_counter < 3000)
-      {
-        mLeds.b.Seq1Wait = 1;
-      }
-      else save_counter = 0;
-    }
-    else if((display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2))
-    {
-      mLeds.b.Seq1Wait = 1;
-      load_counter++;
-      if(load_counter < 1500)
-      {
-        mLeds.b.Seq2Wait = 0;
-      }
-      else if(load_counter < 3000)
-      {
-        mLeds.b.Seq2Wait = 1;
-      }
-      else load_counter = 0;
-
-
-    }
-
-    if(!Is_Expander_Present())
-    {
-      if(bank == 1) mLeds.value[0] &= ~(1 << 6);
-      else mLeds.value[0] &= ~(1 << 7);
-    }
-  };
-
-  //Send data to leds
-  LEDS_modes_SendStruct(&mLeds);
-
-  if ( (display_mode == DISPLAY_MODE_VIEW_1) ||
-      (display_mode == DISPLAY_MODE_EDIT_1) ) {
-    DISPLAY_LED_I_ON;
-    DISPLAY_LED_II_OFF;
-  };
-
-  if ( (display_mode == DISPLAY_MODE_VIEW_2) ||
-      (display_mode == DISPLAY_MODE_EDIT_2) ) {
-    DISPLAY_LED_II_ON;
-    DISPLAY_LED_I_OFF;
-  };
-};
-
-/*
-	Steps section leds update function
-	TODO(maxl0rd): refactor into display.c
- */
-void UpdateStepSection(void)
-{
-  if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
-    LED_STEP_LightStep(afg1_step_num);
-  };
-  if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
-    LED_STEP_LightStep(afg2_step_num);
-  };
-  if ( ( display_mode == DISPLAY_MODE_EDIT_1 ) ||
-      ( display_mode == DISPLAY_MODE_EDIT_2 ) ||
-      ( display_mode == DISPLAY_MODE_SAVE_1 ) ||
-      ( display_mode == DISPLAY_MODE_SAVE_2 ) ||
-      (display_mode == DISPLAY_MODE_LOAD_1) ||
-      (display_mode == DISPLAY_MODE_LOAD_2)
-  ) {
-    LED_STEP_LightStep(edit_mode_step_num);
-  };
-};
 
 void PermutePulses(void)
 {
@@ -1337,7 +1160,6 @@ void PermutePulses(void)
     myButtons.value = GetButton(); 
   }
 }
-
 
 
 void Calibration(void)
@@ -1590,18 +1412,16 @@ int main(void)
     };
 
     // Update panel state
-    // TODO(maxl0rd): Refactor into display.c
     if (display_update_flags.b.MainDisplay) {
-      UpdateModeSection();
+      UpdateModeSectionLeds(edit_mode_step_num, bank);
       display_update_flags.b.MainDisplay = 0;
-      if ( 	(display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
-          (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2) )
-      {
+      if ((display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
+          (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2)) {
         display_update_flags.b.MainDisplay = 1;
       }
     };
     if (display_update_flags.b.StepsDisplay) {
-      UpdateStepSection();
+      UpdateStepSection(edit_mode_step_num);
       display_update_flags.b.StepsDisplay = 0;
     };
 

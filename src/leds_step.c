@@ -3,6 +3,7 @@
 #include <string.h>
 #include "leds_step.h"
 #include "expander.h"
+#include "delays.h"
 
 #define LED_STEP_SHIFT_HIGH			GPIO_SetBits(GPIOC, GPIO_Pin_7)
 #define LED_STEP_SHIFT_LOW			GPIO_ResetBits(GPIOC, GPIO_Pin_7)

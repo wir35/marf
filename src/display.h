@@ -34,6 +34,9 @@ extern volatile uDisplayUpdateFlag display_update_flags;
 // Current display mode
 extern volatile uint8_t display_mode;
 
+// Do the pulse LEDs need to be swapped?
+extern uint8_t swapped_pulses;
+
 inline void update_display() {
   display_update_flags.b.MainDisplay  = 1;
   display_update_flags.b.StepsDisplay = 1;
@@ -46,5 +49,12 @@ inline void update_main_display() {
 inline void update_steps_display() {
   display_update_flags.b.StepsDisplay = 1;
 }
+
+// Update display leds in programming section
+void UpdateModeSectionLeds(uint8_t edit_mode_step_num, uint8_t bank);
+
+// Update step leds
+void UpdateStepSection(uint8_t edit_mode_step_num);
+
 
 #endif

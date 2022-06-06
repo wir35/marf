@@ -88,7 +88,6 @@ void DoStart1() {
   if (afg1_mode == MODE_STOP || afg1_mode == MODE_ADVANCE) {
     // Start run
     afg1_mode = MODE_RUN;
-    afg1_step_num = GetNextStep(0, afg1_step_num);
     update_display();
     DoStepOutputPulses1();
   }
@@ -134,7 +133,6 @@ uint8_t CheckStart1() {
 void DoStart2() {
   if (afg2_mode == MODE_STOP || afg2_mode == MODE_ADVANCE) {
     afg2_mode = MODE_RUN;
-    afg2_step_num = GetNextStep(1, afg2_step_num);
     update_display();
     DoStepOutputPulses2();
   }
