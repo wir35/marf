@@ -3,7 +3,7 @@
 
 #include "HC165.h"
 
-unsigned char keyb_proc(uButtons * key);
+unsigned char ProcessSwitchesActivity(uButtons * key);
 void mADC_init(void);
 void ADCPause(void);
 

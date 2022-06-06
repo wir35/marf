@@ -66,6 +66,7 @@ void JumpToStep1(unsigned int step);
 void JumpToStep2(unsigned int step);
 
 // Clock mode control
+void ProcessStopStart(uint16_t gpiob_data);
 
 // Handle stop signal
 void DoStop1();

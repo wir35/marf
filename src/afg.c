@@ -10,9 +10,6 @@
 // Current step number
 volatile uint8_t afg1_step_num = 0, afg2_step_num = 0;
 
-// Length of the current step in timer "ticks"
-volatile uint32_t afg1_step_width = 0, afg2_step_width = 0;
-
 // Step counters
 volatile uint32_t afg1_step_cnt = 0, afg2_step_cnt = 0;
 
@@ -21,12 +18,6 @@ volatile unsigned char afg1_mode = MODE_RUN;
 volatile unsigned char afg2_mode = MODE_RUN;
 volatile unsigned char afg1_prev_mode = MODE_RUN;
 volatile unsigned char afg2_prev_mode = MODE_RUN;
-volatile unsigned char afg1_advance = 0;
-volatile unsigned char afg2_advance = 0;
-
-// Current mode for start condition
-volatile unsigned char afg1_start_mode = START_MODE_ZERO;
-volatile unsigned char afg2_start_mode = START_MODE_ZERO;
 
 // The voltage level of the current step
 volatile unsigned int afg1_step_level = 0;
@@ -39,6 +30,15 @@ volatile unsigned int afg2_prev_step_level = 0;
 // The stage address selection step
 volatile uint8_t afg1_stage_address = 0;
 volatile uint8_t afg2_stage_address = 0;
+
+#define START_STOP_WINDOW 4
+
+// State for processing start and stop signals
+uint16_t previous_gpiob_data = 0;
+uint8_t start1_counter = 0;
+uint8_t stop1_counter = 0;
+uint8_t start2_counter = 0;
+uint8_t stop2_counter = 0;
 
 // Start Timer 3 for AFG1 start pulse duration measurement
 // Only used when going into enable/sustain
@@ -69,7 +69,7 @@ void InitStart_2_SignalTimer() {
 };
 
 void DoStop1() {
-  if ((afg1_mode != MODE_WAIT && afg1_mode != MODE_WAIT_HI_Z && afg1_mode != MODE_STAY_HI_Z)) {
+  if (afg1_mode == MODE_RUN) {
     afg1_prev_mode = MODE_RUN;
     afg1_mode = MODE_STOP;
     update_display();
@@ -77,7 +77,7 @@ void DoStop1() {
 }
 
 void DoStop2() {
-  if (afg2_mode != MODE_WAIT && afg2_mode != MODE_WAIT_HI_Z && afg2_mode != MODE_STAY_HI_Z) {
+  if (afg1_mode == MODE_RUN) {
     afg2_prev_mode = MODE_RUN;
     afg2_mode = MODE_STOP;
     update_display();
@@ -241,6 +241,38 @@ void JumpToStep2(unsigned int step) {
   DoStepOutputPulses2();
 }
 
+// Take the GPIO data directly, detect rising edges and trigger stop, start and advance
+void ProcessStopStart(uint16_t gpiob_data) {
+  previous_gpiob_data = gpiob_data;
+  // Detect rising edge on stop and start signals and set down counter
+  if (!(previous_gpiob_data & 1) && (gpiob_data & 1)) stop1_counter = START_STOP_WINDOW;
+  if (!(previous_gpiob_data & (1<<8)) && (gpiob_data & (1<<8))) start1_counter = START_STOP_WINDOW;
+  if (stop1_counter && start1_counter) {
+    // Both start + stop high triggers an advance, same as the advance switch
+    DoAdvance1();
+    stop1_counter = start1_counter = 0;
+  }
+  else if (stop1_counter && --stop1_counter == 0) {
+    // Stop1 window timed out
+    DoStop1();
+  } else if (start1_counter && --start1_counter == 0) {
+    // Start1 window timed out
+    DoStart1();
+  }
+
+  if (!(previous_gpiob_data & (1<<1)) && (gpiob_data & (1<<1))) stop2_counter = START_STOP_WINDOW; // stop jack rising edge
+  if (!(previous_gpiob_data & (1<<6)) && (gpiob_data & (1<<6))) start2_counter = START_STOP_WINDOW; // start jack rising edge
+  if (stop2_counter && start2_counter) {
+    DoAdvance2();
+    stop2_counter = start2_counter = 0;
+  } else if (stop2_counter && --stop2_counter == 0) {
+    DoStop2();
+  }
+  else if (start2_counter && --start2_counter == 0) {
+    DoStart2();
+  }
+
+}
 /*
   Every tick triggers new output voltages and a check if the step has ended.
  */

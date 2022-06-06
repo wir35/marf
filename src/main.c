@@ -53,14 +53,7 @@ uint16_t tick;
 
 #define KEY_DEBOUNCE_COUNT 3
 #define KEY_TIMER 5 // scan switches every 5ms
-#define EXTCLOCK_WINDOW 4
 
-uint32_t jackpins = 0;
-uint32_t prev_jackpins = 0;
-unsigned char start1 = 0;
-unsigned char stop1 = 0; 
-unsigned char start2 = 0;
-unsigned char stop2 = 0;
 int swing1 = 0;
 int swing2 = 0;
 
@@ -438,11 +431,6 @@ void mTimersInit(void)
 
   SCB->AIRCR = AIRCR_VECTKEY_MASK | NVIC_PriorityGroup_0;
 
-  afg1_step_cnt = 8;
-  afg2_step_cnt = 8;
-  afg1_step_width = 8;
-  afg2_step_width = 8;
-
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM14, ENABLE);
 
   TIM_TimeBaseStructInit(&myTimer);
@@ -666,7 +654,7 @@ void InternalDACInit(void)
 
 // Implement most of the UI logic for switch changes.
 // TODO(maxl0rd): figure out a way to break this up.
-unsigned char keyb_proc(uButtons * key)
+unsigned char ProcessSwitchesActivity(uButtons * key)
 {
   unsigned char step_num = 0, section = 0;
   uint8_t max_step = get_max_step();
@@ -1359,52 +1347,46 @@ int main(void)
   key_state = GetButton();
   myButtons.value = key_state;
 
-  if(!myButtons.b.StageAddress1Advance)
-  {
-    //if advance switch is pressed start calibration
+  if(!myButtons.b.StageAddress1Advance) {
+    // If advance 1 switch is pressed, enter calibration loop
     Calibration();
   }
-  else if (!myButtons.b.Pulse1Off && !myButtons.b.Pulse2Off)
-    // set up pulse LED permutation
-  {
+  else if (!myButtons.b.Pulse1Off && !myButtons.b.Pulse2Off) {
+    // Store that we need pulses switched
     PermutePulses();
-  }
-  else
-  {
+  } else {
     // If not restore calibration constants from memory
     // Pass in the pointer to the call_constants array from analog_data.c (slightly sketchy)
     CAT25512_read_block(100*sizeof(steps), (unsigned char *) cal_constants, sizeof(cal_constants));
-    PrecomputeCalibration();
-
     swapped_pulses = CAT25512_ReadByte(100*sizeof(steps)+sizeof(cal_constants));
+    PrecomputeCalibration();
   }
 
   // Set magic for voltage scaling from dip switch state
   SetVoltageRange(dip_config);
 
   while (1) {
+    // Main loop
 
-    /* keys proceed */
-    //		if (KeyThreshHoldCnt == 0) {
-    if ((uint16_t)(get_millis() - key_timestamp) > KEY_TIMER) { // time to scan the switches
+    if ((uint16_t)(get_millis() - key_timestamp) > KEY_TIMER) {
+      // Time to scan the switches
       raw_key_state = GetButton();
       key_timestamp = get_millis();
       if (raw_key_state == key_state) {
-        if (--keys_debounce == 0) { // stable now
-          keys_stable = 1;
+        if (--keys_debounce == 0) {
+          keys_stable = 1; // switches stable now
           keys_debounce = KEY_DEBOUNCE_COUNT;
         }
-      }
-      else {
+      } else {
         keys_debounce = KEY_DEBOUNCE_COUNT;
         key_state = raw_key_state;
-        keys_stable = 0;
+        keys_stable = 0; // nope bounce again
       }
       if (keys_stable) {
         myButtons.value = key_state;
         if (key_state != prev_key_state || myButtons.b.StepRight == 0 || myButtons.b.StepLeft == 0) {
           tick = 0;
-          keyb_proc(&myButtons);
+          ProcessSwitchesActivity(&myButtons);
           tick = 1;
           prev_key_state = key_state;
         }
@@ -1430,47 +1412,7 @@ int main(void)
     ComputeContinuousStep2();
 
     // Process Stop and Start signals
-    prev_jackpins = jackpins;
-    jackpins = GPIO_ReadInputData(GPIOB);
-    if (!(prev_jackpins & 1) && (jackpins & 1)) stop1 = EXTCLOCK_WINDOW; // stop jack rising edge
-    if (!(prev_jackpins & (1<<8)) && (jackpins & (1<<8))) start1 = EXTCLOCK_WINDOW; // start jack rising edge
-    if (stop1 && start1) {
-      // Both start + stop high triggers an advance, same as the advance switch
-      DoAdvance1();
-      stop1 = 0;
-      start1 = 0;
-    }
-    else if (stop1) {
-      if (--stop1 == 0) {
-        // stop1 window timed out
-        DoStop1();
-      }
-    }
-    else if (start1) {
-      if (--start1 == 0) {
-        // start1 window timed out
-        DoStart1();
-      }
-    }
-
-    if (!(prev_jackpins & (1<<1)) && (jackpins & (1<<1))) stop2 = EXTCLOCK_WINDOW; // stop jack rising edge
-    if (!(prev_jackpins & (1<<6)) && (jackpins & (1<<6))) start2 = EXTCLOCK_WINDOW; // start jack rising edge
-    if (stop2 && start2) {
-      // Both start + stop high triggers an advance, same as the advance switch
-      DoAdvance2();
-      stop2 = 0;
-      start2 = 0;
-    }
-    else if (stop2) {
-      if (--stop2 == 0) { // stop1 window timed out
-        DoStop2();
-      }
-    }
-    else if (start2) {
-      if (--start2 == 0) { // start1 window timed out
-        DoStart2();
-      }
-    }
+    ProcessStopStart(GPIO_ReadInputData(GPIOB));
 
   }; // end main loop
 };

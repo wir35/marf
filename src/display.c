@@ -16,14 +16,64 @@ volatile uint8_t display_mode = DISPLAY_MODE_VIEW_1;
 // Do the pulse LEDs need to be swapped?
 uint8_t swapped_pulses = 0;
 
-volatile uint32_t save_counter = 0, load_counter = 0;
+uint32_t save_counter = 0, load_counter = 0;
 
+// Update the led data for view and edit modes
+void UpdateLedsProgramMode(uLeds* mLeds, uStep* step) {
+  mLeds->b.VoltageFull   = ~step->b.FullRange;
+  mLeds->b.Voltage0      = ~step->b.Voltage0;
+  mLeds->b.Voltage2      = ~step->b.Voltage2;
+  mLeds->b.Voltage4      = ~step->b.Voltage4;
+  mLeds->b.Voltage6      = ~step->b.Voltage6;
+  mLeds->b.Voltage8      = ~step->b.Voltage8;
+  if (swapped_pulses) {
+    mLeds->b.Pulse1        = ~step->b.OutputPulse2;
+    mLeds->b.Pulse2        = ~step->b.OutputPulse1;
+  } else {
+    mLeds->b.Pulse1        = ~step->b.OutputPulse1;
+    mLeds->b.Pulse2        = ~step->b.OutputPulse2;
+  }
+  mLeds->b.CycleFirst    = ~step->b.CycleFirst;
+  mLeds->b.CycleLast     = ~step->b.CycleLast;
+  mLeds->b.VoltageSource = ~step->b.VoltageSource;
+  mLeds->b.Integration   = ~step->b.Sloped;
+  mLeds->b.Quantization  = ~step->b.Quantize;
+  mLeds->b.TimeRange0    = ~step->b.TimeRange_p03;
+  mLeds->b.TimeRange1    = ~step->b.TimeRange_p3;
+  mLeds->b.TimeRange2    = ~step->b.TimeRange_3;
+  mLeds->b.TimeRange3    = ~step->b.TimeRange_30;
+  mLeds->b.TimeSource    = ~step->b.TimeSource;
+  mLeds->b.OPStop        = ~step->b.OpModeSTOP;
+  mLeds->b.OPSustain     = ~step->b.OpModeSUSTAIN;
+  mLeds->b.OPEnable      = ~step->b.OpModeENABLE;
+}
+
+// Flash leds when waiting for save or load
+void UpdateLedsLoadAndSaveMode(uLeds* mLeds, uint8_t bank) {
+  if (display_mode == DISPLAY_MODE_SAVE_1 || display_mode == DISPLAY_MODE_SAVE_2) {
+    // Flash Seq1Wait
+    mLeds->b.Seq2Wait = 1;
+    save_counter++;
+    if (save_counter < 1500) mLeds->b.Seq1Wait = 0;
+    else if (save_counter < 3000) mLeds->b.Seq1Wait = 1;
+    else save_counter = 0;
+  } else if(display_mode == DISPLAY_MODE_LOAD_1 || display_mode == DISPLAY_MODE_LOAD_2) {
+    // Flash Seq2Wait
+    mLeds->b.Seq1Wait = 1;
+    load_counter++;
+    if (load_counter < 1500) mLeds->b.Seq2Wait = 0;
+    else if (load_counter < 3000) mLeds->b.Seq2Wait = 1;
+    else load_counter = 0;
+  }
+  if (!Is_Expander_Present()) {
+    if (bank == 1) mLeds->value[0] &= ~(1 << 6);
+    else mLeds->value[0] &= ~(1 << 7);
+  }
+}
 
 // Update mode and programming LEDs
 void UpdateModeSectionLeds(uint8_t edit_mode_step_num, uint8_t bank) {
-  uint8_t step_num = 0, section = 0;
   uLeds mLeds;
-  uStep* mStep;
 
   // Initialize all leds off
   // Low value (0) indicates an LED is lit.
@@ -58,103 +108,31 @@ void UpdateModeSectionLeds(uint8_t edit_mode_step_num, uint8_t bank) {
     DISPLAY_LED_I_OFF;
   };
 
-  // Determine step for different DisplayModes
-  if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
-    step_num = afg1_step_num;
-    section = 0;
-  } else if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
-    step_num = afg2_step_num;
-    section = 1;
-  } else if ( display_mode == DISPLAY_MODE_EDIT_1 ) {
-    step_num = edit_mode_step_num;
-    section = 0;
-  } else if ( display_mode == DISPLAY_MODE_EDIT_2 ) {
-    step_num = edit_mode_step_num;
-    section = 1;
-  };
-
-  mStep = (uStep*) &steps[section][step_num];
-
-  mLeds.b.VoltageFull   = ~mStep->b.FullRange;
-  mLeds.b.Voltage0      = ~mStep->b.Voltage0;
-  mLeds.b.Voltage2      = ~mStep->b.Voltage2;
-  mLeds.b.Voltage4      = ~mStep->b.Voltage4;
-  mLeds.b.Voltage6      = ~mStep->b.Voltage6;
-  mLeds.b.Voltage8      = ~mStep->b.Voltage8;
-  if (swapped_pulses) {
-    mLeds.b.Pulse1        = ~mStep->b.OutputPulse2;
-    mLeds.b.Pulse2        = ~mStep->b.OutputPulse1;
-  } else {
-    mLeds.b.Pulse1        = ~mStep->b.OutputPulse1;
-    mLeds.b.Pulse2        = ~mStep->b.OutputPulse2;
+  switch (display_mode) {
+  case DISPLAY_MODE_VIEW_1:
+  case DISPLAY_MODE_EDIT_1:
+    UpdateLedsProgramMode(&mLeds, (uStep*) &steps[0][afg1_step_num]);
+    UpdateStepSection(afg1_step_num);
+    break;
+  case DISPLAY_MODE_VIEW_2:
+  case DISPLAY_MODE_EDIT_2:
+    UpdateLedsProgramMode(&mLeds, (uStep*) &steps[1][afg2_step_num]);
+    UpdateStepSection(afg2_step_num);
+    break;
+  case DISPLAY_MODE_SAVE_1:
+  case DISPLAY_MODE_LOAD_1:
+  case DISPLAY_MODE_SAVE_2:
+  case DISPLAY_MODE_LOAD_2:
+    UpdateLedsLoadAndSaveMode(&mLeds, bank);
+    break;
   }
-  mLeds.b.CycleFirst    = ~mStep->b.CycleFirst;
-  mLeds.b.CycleLast     = ~mStep->b.CycleLast;
-  mLeds.b.VoltageSource = ~mStep->b.VoltageSource;
-  mLeds.b.Integration   = ~mStep->b.Sloped;
-  mLeds.b.Quantization  = ~mStep->b.Quantize;
-  mLeds.b.TimeRange0    = ~mStep->b.TimeRange_p03;
-  mLeds.b.TimeRange1    = ~mStep->b.TimeRange_p3;
-  mLeds.b.TimeRange2    = ~mStep->b.TimeRange_3;
-  mLeds.b.TimeRange3    = ~mStep->b.TimeRange_30;
-  mLeds.b.TimeSource    = ~mStep->b.TimeSource;
-  mLeds.b.OPStop        = ~mStep->b.OpModeSTOP;
-  mLeds.b.OPSustain     = ~mStep->b.OpModeSUSTAIN;
-  mLeds.b.OPEnable      = ~mStep->b.OpModeENABLE;
 
-  // TODO(maxl0rd): Move different display modes into different functions yea
-
-  if ((display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
-      (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2)) {
-    mLeds.value[0] = 0xFF;
-    mLeds.value[1] = 0xFF;
-    mLeds.value[2] = 0xFF;
-    mLeds.value[3] = 0xFF;
-
-    if((display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2))
-    {
-      mLeds.b.Seq2Wait = 1;
-      save_counter++;
-      if(save_counter < 1500)
-      {
-        mLeds.b.Seq1Wait = 0;
-      }
-      else if(save_counter < 3000)
-      {
-        mLeds.b.Seq1Wait = 1;
-      }
-      else save_counter = 0;
-    }
-    else if((display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2))
-    {
-      mLeds.b.Seq1Wait = 1;
-      load_counter++;
-      if(load_counter < 1500)
-      {
-        mLeds.b.Seq2Wait = 0;
-      }
-      else if(load_counter < 3000)
-      {
-        mLeds.b.Seq2Wait = 1;
-      }
-      else load_counter = 0;
-
-
-    }
-
-    if(!Is_Expander_Present())
-    {
-      if(bank == 1) mLeds.value[0] &= ~(1 << 6);
-      else mLeds.value[0] &= ~(1 << 7);
-    }
-  };
-
+  // And send out the led data
   LEDS_modes_SendStruct(&mLeds);
-};
+}
 
 // Update steps leds
-void UpdateStepSection(uint8_t edit_mode_step_num)
-{
+void UpdateStepSection(uint8_t edit_mode_step_num) {
   if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
     LED_STEP_LightStep(afg1_step_num);
   };
@@ -169,5 +147,5 @@ void UpdateStepSection(uint8_t edit_mode_step_num)
       (display_mode == DISPLAY_MODE_LOAD_2)
   ) {
     LED_STEP_LightStep(edit_mode_step_num);
-  };
-};
+  }
+}
