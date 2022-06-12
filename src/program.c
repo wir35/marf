@@ -8,6 +8,17 @@
 // Main step programming
 volatile uStep steps[2][32];
 
+void InitSteps() {
+  uStep clear_step = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }};
+  clear_step.b.TimeRange_p3 = 1;
+  clear_step.b.FullRange = 1;
+
+  for(uint8_t s = 0; s < 32; s++) {
+    steps[0][s] = clear_step;
+    steps[1][s] = clear_step;
+  };
+}
+
 void WriteVoltageSlider(uint8_t slider_num, uint32_t new_adc_reading) {
   static volatile uint16_t voltage_smoothers[32];
 
@@ -100,7 +111,8 @@ uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
 // The minimum value is 0.002s or 2ms or 8 ticks
 // The maximum range is 2s-30s which is 112000 ticks.
 uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
-  float time_level = 0.0, step_width = 0.0;
+  float step_width = 0.0;
+  float time_level = 0.0;
   uint8_t ext_ban_num = 0;
 
   if (steps[section][step_num].b.TimeSource) {
@@ -126,6 +138,21 @@ uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
 
   return (uint32_t) step_width;
 };
+
+uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
+  float time_level = 0.0;
+  uint8_t ext_ban_num = 0;
+
+  if (steps[section][step_num].b.TimeSource) {
+    // Step time is set externally
+    ext_ban_num = (uint8_t) steps[section][step_num].b.TLevel >> 10;
+    time_level = read_calibrated_add_data_uint16(ext_ban_num);
+  } else {
+    // Step time is set on panel
+    time_level = steps[section][step_num].b.TLevel;
+  };
+  return time_level;
+}
 
 // Calculate the number of next step.
 // In the event that the end of a loop is reached,

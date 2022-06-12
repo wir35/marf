@@ -739,7 +739,7 @@ int main(void)
 {
   uButtons myButtons;
   uLeds mLeds;
-  unsigned char _cnt;
+
   volatile unsigned long long int key_state, prev_key_state, raw_key_state;
   uint32_t key_timestamp=0;
   uint16_t keys_debounce =0;
@@ -750,18 +750,7 @@ int main(void)
   display_update_flags.b.MainDisplay 	= 1;
   display_update_flags.b.StepsDisplay = 1;
 
-  /* Init steps structures */
-  steps[0][0].b.TimeRange_p3 = 1;
-  steps[0][0].b.FullRange = 1;
-  steps[0][0].b.Swing = 0;
-  steps[1][0] = steps[0][0];
-
-
-  for(_cnt=1;_cnt<=31;_cnt++)
-  {
-    steps[0][_cnt] = steps[0][0];
-    steps[1][_cnt] = steps[0][0];
-  };
+  InitSteps();
 
   RCC_GetClocksFreq(&RCC_Clocks);
 

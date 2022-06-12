@@ -47,8 +47,11 @@ typedef union
 } uStep;
 
 // Main steps array data
-// This is a global that is accessed throughout every source file (for now) especially main.c
+// This is extern visible so that we can inline fast access to it, but
+// DO NOT ACCESS IT DIRECTLY from any other source file.
 extern volatile uStep steps[2][32];
+
+void InitSteps();
 
 inline uint8_t get_max_step() {
   return Is_Expander_Present() ? 31 : 15;
@@ -59,6 +62,10 @@ inline uint8_t get_max_step_shift12() {
   return Is_Expander_Present() ? 7 : 8;
 }
 
+inline uStep get_step_programming(uint8_t section, uint8_t step_num) {
+  return steps[section][step_num];
+}
+
 void WriteVoltageSlider(uint8_t slider_num, uint32_t new_adc_reading);
 
 void WriteTimeSlider(uint8_t slider_num, uint32_t new_adc_reading);
@@ -66,6 +73,8 @@ void WriteTimeSlider(uint8_t slider_num, uint32_t new_adc_reading);
 void WriteOtherCv(uint8_t cv_num, uint32_t new_adc_reading);
 
 uint16_t GetStepVoltage(uint8_t section, uint8_t step_num);
+
+uint16_t GetStepTime(uint8_t section, uint8_t step_num);
 
 uint32_t GetStepWidth(uint8_t section, uint8_t step_num);
 

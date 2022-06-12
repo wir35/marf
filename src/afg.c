@@ -181,7 +181,7 @@ void JumpToStep1(unsigned int step) {
 
   if (display_mode == DISPLAY_MODE_VIEW_1) update_display();
 
-  if (steps[0][afg1_step_num].b.Sloped ) {
+  if (get_step_programming(0, afg1_step_num).b.Sloped) {
     // Sloped step, hold the value
     OutputVoltage = afg1_prev_step_level;
   } else {
@@ -194,7 +194,7 @@ void JumpToStep1(unsigned int step) {
   DAC_SetChannel1Data(DAC_Align_12b_R, OutputVoltage);
 
   // Set AFG1 time out value
-  MAX5135_DAC_send(MAX5135_DAC_CH_0, steps[0][afg1_step_num].b.TLevel >> 2);
+  MAX5135_DAC_send(MAX5135_DAC_CH_0, GetStepTime(0, afg1_step_num) >> 2);
 
   // Set AFG1 reference out value
   // (Slopes down from 1023 to 0 over the course of the step)
@@ -216,7 +216,7 @@ void JumpToStep2(unsigned int step) {
   }
   if (display_mode == DISPLAY_MODE_VIEW_2) update_display();
 
-  if (steps[1][afg2_step_num].b.Sloped ) {
+  if (get_step_programming(1, afg2_step_num).b.Sloped) {
     OutputVoltage = afg2_prev_step_level;
   } else {
     OutputVoltage = GetStepVoltage(1, afg2_step_num);
@@ -225,7 +225,7 @@ void JumpToStep2(unsigned int step) {
   afg2_step_level = OutputVoltage;
   DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
 
-  MAX5135_DAC_send(MAX5135_DAC_CH_2, steps[1][afg2_step_num].b.TLevel >> 2);
+  MAX5135_DAC_send(MAX5135_DAC_CH_2, GetStepTime(1, afg2_step_num) >> 2);
   MAX5135_DAC_send(MAX5135_DAC_CH_3, 1023);
 
   DoStepOutputPulses2();
@@ -326,13 +326,13 @@ void AfgTick1() {
       // Don't reset
     };
 
-    if (steps[0][afg1_step_num].b.OpModeSTOP) {
+    if (get_step_programming(0, afg1_step_num).b.OpModeSTOP) {
       // Stop step
       afg1_mode = MODE_STOP;
       // Don't reset step counter
     };
 
-    if (steps[0][afg1_step_num].b.OpModeENABLE
+    if (get_step_programming(0, afg1_step_num).b.OpModeENABLE
         && afg1_mode != MODE_WAIT_HI_Z)  {
       // Enable step, check start banana
       if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) {
@@ -343,7 +343,7 @@ void AfgTick1() {
       afg1_step_cnt = 0; // Reset step counter
     };
 
-    if (steps[0][afg1_step_num].b.OpModeSUSTAIN
+    if (get_step_programming(0, afg1_step_num).b.OpModeSUSTAIN
         && afg1_mode != MODE_STAY_HI_Z) {
       // Sustain step, check start banana
       if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1)) {
@@ -370,7 +370,7 @@ void AfgTick1() {
   output_voltage = GetStepVoltage(0, afg1_step_num);
 
   // If the step is sloped, then slope from PreviousStep to the new output value
-  if (steps[0][afg1_step_num].b.Sloped ) {
+  if (get_step_programming(0, afg1_step_num).b.Sloped ) {
     if (afg1_prev_step_level >= output_voltage) {
       // Slope down
       delta_voltage = (float) (afg1_prev_step_level - output_voltage) / step_width;
@@ -387,7 +387,7 @@ void AfgTick1() {
   DAC_SetChannel1Data(DAC_Align_12b_R, output_voltage);
 
   // Set AFG1 time out value
-  MAX5135_DAC_send(MAX5135_DAC_CH_0, steps[0][afg1_step_num].b.TLevel >> 2);
+  MAX5135_DAC_send(MAX5135_DAC_CH_0, GetStepTime(0, afg1_step_num) >> 2);
 
   // Set AFG1 reference out value
   if (afg1_step_cnt < step_width) {
@@ -436,11 +436,11 @@ void AfgTick2() {
       afg2_mode =  MODE_STOP;
     };
 
-    if (steps[1][afg2_step_num].b.OpModeSTOP) {
+    if (get_step_programming(1, afg2_step_num).b.OpModeSTOP) {
       afg2_mode = MODE_STOP;
     };
 
-    if (steps[1][afg2_step_num].b.OpModeENABLE
+    if (get_step_programming(1, afg2_step_num).b.OpModeENABLE
         && afg2_mode != MODE_WAIT_HI_Z) {
       if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0)) {
         afg2_prev_mode = afg2_mode;
@@ -449,7 +449,7 @@ void AfgTick2() {
       afg2_step_cnt = 0;
     };
 
-    if ((steps[1][afg2_step_num].b.OpModeSUSTAIN
+    if ((get_step_programming(1, afg2_step_num).b.OpModeSUSTAIN
         && afg2_mode != MODE_STAY_HI_Z)) {
       if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1)) {
         afg2_prev_mode = afg2_mode;
@@ -470,7 +470,7 @@ void AfgTick2() {
 
   output_voltage = GetStepVoltage(1, afg2_step_num);
 
-  if (steps[1][afg2_step_num].b.Sloped ) {
+  if (get_step_programming(1, afg2_step_num).b.Sloped ) {
     if (afg2_prev_step_level >= output_voltage) {
       delta_voltage = (float) (afg2_prev_step_level - output_voltage) / step_width;
       output_voltage = afg2_prev_step_level - (unsigned int) (delta_voltage * afg2_step_cnt);
@@ -483,7 +483,7 @@ void AfgTick2() {
   afg2_step_level = output_voltage;
   DAC_SetChannel2Data(DAC_Align_12b_R, output_voltage);
 
-  MAX5135_DAC_send(MAX5135_DAC_CH_2, steps[1][afg2_step_num].b.TLevel >> 2);
+  MAX5135_DAC_send(MAX5135_DAC_CH_2, GetStepTime(1, afg2_step_num) >> 2);
 
   if (afg2_step_cnt < step_width) {
     MAX5135_DAC_send(MAX5135_DAC_CH_3,
