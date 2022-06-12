@@ -10,13 +10,9 @@
 #include "HC165.h"
 
 // Main structure for step data type
-// TODO (maxl0rd) eventually separate VLevel and TLevel out of this
-// into its own Sliders struct. These don't belong together in the same model.
 typedef union
 {
   struct {
-    unsigned int VLevel:12;
-    unsigned int TLevel:12;
     unsigned int Quantize:1;
     unsigned int Sloped:1;
     unsigned int FullRange:1;
@@ -43,15 +39,21 @@ typedef union
     unsigned int Swing:1;
     unsigned int NU4:1;
   } b;
-  unsigned char val[6];
+  unsigned char val[3];
 } uStep;
 
-// Main steps array data
+typedef struct {
+    unsigned int VLevel:12;
+    unsigned int TLevel:12;
+} StepSliders;
+
+// Main steps and sliders array data
 // This is extern visible so that we can inline fast access to it, but
 // DO NOT ACCESS IT DIRECTLY from any other source file.
 extern volatile uStep steps[2][32];
+extern volatile StepSliders sliders[2][32];
 
-void InitSteps();
+void InitProgram();
 
 inline uint8_t get_max_step() {
   return Is_Expander_Present() ? 31 : 15;

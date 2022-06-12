@@ -750,7 +750,7 @@ int main(void)
   display_update_flags.b.MainDisplay 	= 1;
   display_update_flags.b.StepsDisplay = 1;
 
-  InitSteps();
+  InitProgram();
 
   RCC_GetClocksFreq(&RCC_Clocks);
 

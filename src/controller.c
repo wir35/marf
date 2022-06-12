@@ -138,11 +138,13 @@ void ControllerCheckClear() {
     TIM6->CR1 &= ~TIM_CR1_CEN;
 
     if (clear_counter1 == 30) {
-      ClearProgram(0);
+      InitProgram();
       HardStop1();
+      HardStop2();
     }
     else if (clear_counter2 == 30) {
-      ClearProgram(1);
+      InitProgram();
+      HardStop1();
       HardStop2();
     };
 

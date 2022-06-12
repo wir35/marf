@@ -7,15 +7,22 @@
 
 // Main step programming
 volatile uStep steps[2][32];
+volatile StepSliders sliders[2][32];
 
-void InitSteps() {
-  uStep clear_step = {{ 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 }};
+void InitProgram() {
+  uStep clear_step = {{ 0x00, 0x00, 0x00 }};
   clear_step.b.TimeRange_p3 = 1;
   clear_step.b.FullRange = 1;
+
+  StepSliders clear_slider;
+  clear_slider.VLevel = 0;
+  clear_slider.TLevel = 0;
 
   for(uint8_t s = 0; s < 32; s++) {
     steps[0][s] = clear_step;
     steps[1][s] = clear_step;
+    sliders[0][s] = clear_slider;
+    sliders[1][s] = clear_slider;
   };
 }
 
@@ -27,13 +34,13 @@ void WriteVoltageSlider(uint8_t slider_num, uint32_t new_adc_reading) {
 
   for (uint8_t j = 0; j < 2; j++) {
     if (steps[j][slider_num].b.WaitVoltageSlider) {
-      if (smoothed >> 4 == steps[j][slider_num].b.VLevel >> 4) {
+      if (smoothed >> 4 == sliders[j][slider_num].VLevel >> 4) {
         // Unpin the slider
         steps[j][slider_num].b.WaitVoltageSlider = 0;
-        steps[j][slider_num].b.VLevel = smoothed;
+        sliders[j][slider_num].VLevel = smoothed;
       }
     } else {
-      steps[j][slider_num].b.VLevel = smoothed;
+      sliders[j][slider_num].VLevel = smoothed;
     }
   }
 }
@@ -46,13 +53,13 @@ void WriteTimeSlider(uint8_t slider_num, uint32_t new_adc_reading) {
 
   for (uint8_t j = 0; j < 2; j++) {
     if (steps[j][slider_num].b.WaitTimeSlider) {
-      if (smoothed >> 4 == steps[j][slider_num].b.TLevel >> 4) {
+      if (smoothed >> 4 == sliders[j][slider_num].TLevel >> 4) {
         // Unpin the slider
         steps[j][slider_num].b.WaitTimeSlider = 0;
-        steps[j][slider_num].b.TLevel = smoothed;
+        sliders[j][slider_num].TLevel = smoothed;
       }
     } else {
-      steps[j][slider_num].b.TLevel = smoothed;
+      sliders[j][slider_num].TLevel = smoothed;
     }
   }
 }
@@ -65,11 +72,11 @@ uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
 
   if (steps[section][step_num].b.VoltageSource) {
     // Step voltage is set externally
-    ext_ban_num = steps[section][step_num].b.VLevel >> 10;
+    ext_ban_num = sliders[section][step_num].VLevel >> 10;
     voltage_level = read_calibrated_add_data_float(ext_ban_num);
   } else {
     // Step voltage is set by slider
-    voltage_level = steps[section][step_num].b.VLevel;
+    voltage_level = sliders[section][step_num].VLevel;
   };
 
   // Clamp if smoothing or something has gone awry
@@ -117,11 +124,11 @@ uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
 
   if (steps[section][step_num].b.TimeSource) {
     // Step time is set externally
-    ext_ban_num = (uint8_t) steps[section][step_num].b.TLevel >> 10;
+    ext_ban_num = (uint8_t) sliders[section][step_num].TLevel >> 10;
     time_level = read_calibrated_add_data_float(ext_ban_num);
   } else {
     // Step time is set on panel
-    time_level = (float) steps[section][step_num].b.TLevel;
+    time_level = (float) sliders[section][step_num].TLevel;
   };
 
   // This magic number is 112000/4095
@@ -145,11 +152,11 @@ uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
 
   if (steps[section][step_num].b.TimeSource) {
     // Step time is set externally
-    ext_ban_num = (uint8_t) steps[section][step_num].b.TLevel >> 10;
+    ext_ban_num = (uint8_t) sliders[section][step_num].TLevel >> 10;
     time_level = read_calibrated_add_data_uint16(ext_ban_num);
   } else {
     // Step time is set on panel
-    time_level = steps[section][step_num].b.TLevel;
+    time_level = sliders[section][step_num].TLevel;
   };
   return time_level;
 }
@@ -327,18 +334,6 @@ void ApplyProgrammingSwitches(uint8_t section, uint8_t step_num, uButtons* switc
     step->b.TimeRange_3 =   0;
     step->b.TimeRange_30 =  1;
   };
-}
-
-void ClearProgram(uint8_t section) {
-   steps[section][0].val[3] = 0x00;
-   steps[section][0].val[4] = 0x00;
-   steps[section][0].val[5] = 0x00;
-   steps[section][0].b.TimeRange_p3 = 1;
-   steps[section][0].b.FullRange = 1;
-   for(uint8_t i=0; i < 16; i++) {
-     steps[section][i] = steps[0][0];
-     steps[section][i+16] = steps[0][0];
-   }
 }
 
 // Set WaitX on all voltage and time sliders
