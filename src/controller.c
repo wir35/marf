@@ -7,6 +7,7 @@
 
 // Step selected for editing (0-31)
 volatile uint8_t edit_mode_step_num = 0;
+volatile uint8_t edit_mode_section = 0;
 
 // Variable used for key lock during the VIEW_MODE key changes steps options
 volatile uint8_t key_locked = 0;
@@ -53,8 +54,14 @@ void ControllerProcessSwitches(uButtons* key) {
     display_mode = DISPLAY_MODE_VIEW_2;
   }
   if (!key->b.StepLeft || !key->b.StepRight) {
-    if (display_mode == DISPLAY_MODE_VIEW_1) display_mode = DISPLAY_MODE_EDIT_1;
-    else if (display_mode == DISPLAY_MODE_VIEW_2) display_mode = DISPLAY_MODE_EDIT_2;
+    if (display_mode == DISPLAY_MODE_VIEW_1) {
+      display_mode = DISPLAY_MODE_EDIT_1;
+      edit_mode_section = afg1_section;
+    }
+    else if (display_mode == DISPLAY_MODE_VIEW_2) {
+      display_mode = DISPLAY_MODE_EDIT_2;
+      edit_mode_section = afg2_section;
+    }
   }
 
   // Decrement and reset counters

@@ -50,8 +50,8 @@ typedef struct {
 // Main steps and sliders array data
 // This is extern visible so that we can inline fast access to it, but
 // DO NOT ACCESS IT DIRECTLY from any other source file.
-extern volatile uStep steps[2][32];
-extern volatile StepSliders sliders[2][32];
+extern volatile uStep steps[32];
+extern volatile StepSliders sliders[32];
 
 void InitProgram();
 
@@ -65,7 +65,8 @@ inline uint8_t get_max_step_shift12() {
 }
 
 inline uStep get_step_programming(uint8_t section, uint8_t step_num) {
-  return steps[section][step_num];
+  step_num += section << 4;
+  return steps[step_num];
 }
 
 void WriteVoltageSlider(uint8_t slider_num, uint32_t new_adc_reading);

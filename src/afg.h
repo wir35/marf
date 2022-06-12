@@ -55,10 +55,24 @@ extern volatile unsigned int afg2_prev_step_level;
 extern volatile uint8_t afg1_stage_address;
 extern volatile uint8_t afg2_stage_address;
 
+// The offset into step programming for each afg [0-15][16-31] 0 or 1
+extern volatile uint8_t afg1_section;
+extern volatile uint8_t afg2_section;
+
 // Timing constants
 #define STEP_TIMER_FREQ_OUT   8000    // 250uSec per timer period "tick"
 #define STEP_TIMER_PRESCALER  168000000/2/1/STEP_TIMER_FREQ_OUT // 10500.0 // (168000000/2/1/STEP_TIMER_FREQ_OUT)
 #define START_TIMER_SUSTAIN   1       // 250 uSec or "1 tick"
+
+// Get the step num, taking into account section offset
+inline uint8_t get_afg1_step_num() {
+  return afg1_step_num + (afg1_section << 4);
+}
+
+// Get the step num, taking into account section offset
+inline uint8_t get_afg2_step_num() {
+  return afg2_step_num + (afg2_section << 4);
+}
 
 // Jump steps
 
@@ -140,12 +154,13 @@ inline void ComputeContinuousStep2() {
 // Pulses
 
 inline void DoStepOutputPulses1() {
-  PULSE_LED_I_ALL_ON;
+  uStep step = get_step_programming(0, afg1_step_num);
 
-  if (steps[0][afg1_step_num].b.OutputPulse1) {
+  PULSE_LED_I_ALL_ON;
+  if (step.b.OutputPulse1) {
     PULSE_LED_I_1_ON;
   };
-  if (steps[0][afg1_step_num].b.OutputPulse2) {
+  if (step.b.OutputPulse2) {
     PULSE_LED_I_2_ON;
   };
 
@@ -156,12 +171,13 @@ inline void DoStepOutputPulses1() {
 }
 
 inline void DoStepOutputPulses2() {
-  PULSE_LED_II_ALL_ON;
+  uStep step = get_step_programming(1, afg2_step_num);
 
-  if (steps[1][afg2_step_num].b.OutputPulse1) {
+  PULSE_LED_II_ALL_ON;
+  if (step.b.OutputPulse1) {
     PULSE_LED_II_1_ON;
   };
-  if (steps[1][afg2_step_num].b.OutputPulse2) {
+  if (step.b.OutputPulse2) {
     PULSE_LED_II_2_ON;
   };
 

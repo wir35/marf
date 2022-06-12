@@ -495,7 +495,6 @@ void InternalDACInit(void)
 };
 
 // Implement most of the UI logic for switch changes.
-// TODO(maxl0rd): figure out a way to break this up.
 unsigned char ProcessSwitchesActivity(uButtons * key)
 {
   unsigned char step_num = 0, section = 0;
@@ -503,36 +502,15 @@ unsigned char ProcessSwitchesActivity(uButtons * key)
   // Determine step num for different display modes
   if (display_mode == DISPLAY_MODE_VIEW_1) {
     step_num = afg1_step_num;
-    section = 0;
+    section = afg1_section;
   };
   if (display_mode == DISPLAY_MODE_VIEW_2) {
     step_num = afg2_step_num;
-    section = 1;
+    section = afg2_section;
   };
-  if (display_mode == DISPLAY_MODE_EDIT_1) {
+  if (display_mode == DISPLAY_MODE_EDIT_1 || DISPLAY_MODE_EDIT_2) {
     step_num = edit_mode_step_num;
-    section = 0;
-  };
-  if (display_mode == DISPLAY_MODE_EDIT_2) {
-    step_num = edit_mode_step_num;
-    section = 1;
-  };
-
-  if (display_mode == DISPLAY_MODE_SAVE_1) {
-    step_num = edit_mode_step_num;
-    section = 0;
-  };
-  if (display_mode == DISPLAY_MODE_SAVE_2) {
-    step_num = edit_mode_step_num;
-    section = 1;
-  };
-  if (display_mode == DISPLAY_MODE_LOAD_1) {
-    step_num = edit_mode_step_num;
-    section = 0;
-  };
-  if (display_mode == DISPLAY_MODE_LOAD_2) {
-    step_num = edit_mode_step_num;
-    section = 1;
+    section = edit_mode_section;
   };
 
   // Apply programming from switches to active step
@@ -862,7 +840,7 @@ int main(void)
 
     // Update panel state
     if (display_update_flags.b.MainDisplay) {
-      UpdateModeSectionLeds(edit_mode_step_num, bank);
+      UpdateModeSectionLeds();
       display_update_flags.b.MainDisplay = 0;
       if ((display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
           (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2)) {
@@ -870,7 +848,7 @@ int main(void)
       }
     };
     if (display_update_flags.b.StepsDisplay) {
-      UpdateStepSection(edit_mode_step_num);
+      UpdateStepSection();
       display_update_flags.b.StepsDisplay = 0;
     };
 

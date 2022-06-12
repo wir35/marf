@@ -6,6 +6,7 @@
 #include "leds_step.h"
 #include "program.h"
 #include "afg.h"
+#include "controller.h"
 
 // Flags which can be set by anything to update the led display
 volatile uDisplayUpdateFlag display_update_flags;
@@ -48,31 +49,8 @@ void UpdateLedsProgramMode(uLeds* mLeds, uStep* step) {
   mLeds->b.OPEnable      = ~step->b.OpModeENABLE;
 }
 
-// Flash leds when waiting for save or load
-void UpdateLedsLoadAndSaveMode(uLeds* mLeds, uint8_t bank) {
-  if (display_mode == DISPLAY_MODE_SAVE_1 || display_mode == DISPLAY_MODE_SAVE_2) {
-    // Flash Seq1Wait
-    mLeds->b.Seq2Wait = 1;
-    save_counter++;
-    if (save_counter < 1500) mLeds->b.Seq1Wait = 0;
-    else if (save_counter < 3000) mLeds->b.Seq1Wait = 1;
-    else save_counter = 0;
-  } else if(display_mode == DISPLAY_MODE_LOAD_1 || display_mode == DISPLAY_MODE_LOAD_2) {
-    // Flash Seq2Wait
-    mLeds->b.Seq1Wait = 1;
-    load_counter++;
-    if (load_counter < 1500) mLeds->b.Seq2Wait = 0;
-    else if (load_counter < 3000) mLeds->b.Seq2Wait = 1;
-    else load_counter = 0;
-  }
-  if (!Is_Expander_Present()) {
-    if (bank == 1) mLeds->value[0] &= ~(1 << 6);
-    else mLeds->value[0] &= ~(1 << 7);
-  }
-}
-
 // Update mode and programming LEDs
-void UpdateModeSectionLeds(uint8_t edit_mode_step_num, uint8_t bank) {
+void UpdateModeSectionLeds() {
   uLeds mLeds;
 
   // Initialize all leds off
@@ -108,26 +86,31 @@ void UpdateModeSectionLeds(uint8_t edit_mode_step_num, uint8_t bank) {
     DISPLAY_LED_I_OFF;
   };
 
+  uStep led_step;
+
   switch (display_mode) {
   case DISPLAY_MODE_VIEW_1:
-    UpdateLedsProgramMode(&mLeds, (uStep*) &steps[0][afg1_step_num]);
+    led_step = get_step_programming(0, afg1_step_num);
+    UpdateLedsProgramMode(&mLeds, &led_step);
     UpdateStepSection(afg1_step_num);
   case DISPLAY_MODE_EDIT_1:
-    UpdateLedsProgramMode(&mLeds, (uStep*) &steps[0][edit_mode_step_num]);
+    led_step = get_step_programming(edit_mode_section, edit_mode_step_num);
+    UpdateLedsProgramMode(&mLeds, &led_step);
     UpdateStepSection(edit_mode_step_num);
     break;
   case DISPLAY_MODE_VIEW_2:
-    UpdateLedsProgramMode(&mLeds, (uStep*) &steps[1][afg2_step_num]);
+    led_step = get_step_programming(1, afg2_step_num);
+    UpdateLedsProgramMode(&mLeds, &led_step);
     UpdateStepSection(afg2_step_num);
   case DISPLAY_MODE_EDIT_2:
-    UpdateLedsProgramMode(&mLeds, (uStep*) &steps[1][edit_mode_step_num]);
+    led_step = get_step_programming(edit_mode_section, edit_mode_step_num);
+    UpdateLedsProgramMode(&mLeds, &led_step);
     UpdateStepSection(edit_mode_step_num);
     break;
   case DISPLAY_MODE_SAVE_1:
   case DISPLAY_MODE_LOAD_1:
   case DISPLAY_MODE_SAVE_2:
   case DISPLAY_MODE_LOAD_2:
-    UpdateLedsLoadAndSaveMode(&mLeds, bank);
     break;
   }
 
@@ -135,8 +118,7 @@ void UpdateModeSectionLeds(uint8_t edit_mode_step_num, uint8_t bank) {
   LEDS_modes_SendStruct(&mLeds);
 }
 
-// Update steps leds
-void UpdateStepSection(uint8_t edit_mode_step_num) {
+void UpdateStepSection() {
   if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
     LED_STEP_LightStep(afg1_step_num);
   };

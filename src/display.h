@@ -51,10 +51,10 @@ inline void update_steps_display() {
 }
 
 // Update display leds in programming section
-void UpdateModeSectionLeds(uint8_t edit_mode_step_num, uint8_t bank);
+void UpdateModeSectionLeds();
 
 // Update step leds
-void UpdateStepSection(uint8_t edit_mode_step_num);
+void UpdateStepSection();
 
 
 #endif
