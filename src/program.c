@@ -313,3 +313,17 @@ void ClearProgram(uint8_t section) {
      steps[section][i+16] = steps[0][0];
    }
 }
+
+// Set WaitX on all voltage and time sliders
+void PinSliders() {
+  for(uint8_t cnt = 0; cnt < 16; cnt++) {
+    steps[0][cnt].b.WaitVoltageSlider = 1;
+    steps[0][cnt].b.WaitTimeSlider = 1;
+    steps[1][cnt].b.WaitVoltageSlider = 1;
+    steps[1][cnt].b.WaitTimeSlider = 1;
+    steps[0][cnt+16].b.WaitVoltageSlider = 1;
+    steps[0][cnt+16].b.WaitTimeSlider = 1;
+    steps[1][cnt+16].b.WaitVoltageSlider = 1;
+    steps[1][cnt+16].b.WaitTimeSlider = 1;
+  };
+}

@@ -75,4 +75,6 @@ void ApplyProgrammingSwitches(uint8_t section, uint8_t step_num, uButtons *switc
 
 void ClearProgram(uint8_t section);
 
+void PinSliders();
+
 #endif

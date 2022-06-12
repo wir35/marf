@@ -23,39 +23,21 @@
 #include "analog_data.h"
 #include "afg.h"
 #include "display.h"
+#include "controller.h"
 
 volatile uint8_t adc_pot_sel = 0;
 
 #define SEQUENCER_DATA_SIZE (6*2*32)
 
-unsigned char edit_mode_step_num = 0;
-
-volatile unsigned char strobe_key = 0;
-
-// Variable used for key lock during the VIEW_MODE key changes steps options
-volatile unsigned char key_locked = 0;	
-volatile unsigned char keys_not_valid = 0;
-
-//Dip switch state
+// Dip switch state
 volatile uDipConfig dip_config;
 
 unsigned char revision; 
 
-// Current patches bank
-volatile unsigned char bank = 1;
-
-volatile unsigned char strobe_banana_flag1 = 0, strobe_banana_flag2 = 0;
-
-uint16_t counterL = 0; 
-uint16_t counterR = 0;
-uint16_t i;
-uint16_t tick;
-
 #define KEY_DEBOUNCE_COUNT 3
 #define KEY_TIMER 5 // scan switches every 5ms
 
-int swing1 = 0;
-int swing2 = 0;
+uint16_t tick;
 
 // ADC interrupt handler
 void ADC_IRQHandler() {
@@ -256,21 +238,6 @@ void EXTI1_IRQHandler() {
   EXTI_ClearITPendingBit(EXTI_Line1);
 };
 
-// Start Timer 6 for clear switch measurement
-void InitClear_Timer() {
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM6, ENABLE);
-
-  TIM6->PSC = 21000;
-  TIM6->ARR = 200;
-  TIM6->CNT = 0;
-  TIM6->DIER = TIM_DIER_UIE;
-  TIM6->CR1 |= TIM_CR1_CEN;
-
-  NVIC_EnableIRQ(TIM6_DAC_IRQn);
-  TIM_ITConfig(TIM6, TIM_IT_Update, ENABLE);
-};
-
-
 
 // Interrupt handler for strobe signals.
 void EXTI9_5_IRQHandler() {
@@ -285,71 +252,6 @@ void EXTI9_5_IRQHandler() {
     DoStrobe2();
     EXTI_ClearITPendingBit(EXTI_Line7);
   };
-};
-
-/*
-	Save current sequence to memory
- */
-unsigned char SaveSequence(unsigned char SequenceCell)
-{	
-  ADCPause();
-  if(!Is_Expander_Present())
-  {
-    CAT25512_write_block(bank*SequenceCell*sizeof(steps), (unsigned char *) steps[0], sizeof(steps[0]));
-    CAT25512_write_block(bank*SequenceCell*sizeof(steps)+sizeof(steps[0]), (unsigned char *) steps[1], sizeof(steps[1]));
-  }
-  else
-  {
-    CAT25512_write_block((SequenceCell+32)*sizeof(steps), (unsigned char *) steps[0], sizeof(steps[0]));
-    CAT25512_write_block((SequenceCell+32)*sizeof(steps)+sizeof(steps[0]), (unsigned char *) steps[1], sizeof(steps[1]));
-  }
-  mADC_init();
-  return 0;
-};
-
-//Load a sequence from cell number SequenceCell
-void LoadSequence(unsigned char SequenceCell)
-{
-  unsigned char cnt;
-
-  ADCPause();
-  if(!Is_Expander_Present())
-  {
-    CAT25512_read_block(bank*SequenceCell*sizeof(steps), (unsigned char *) steps[0], sizeof(steps[0]));
-    CAT25512_read_block(bank*SequenceCell*sizeof(steps)+sizeof(steps[0]), (unsigned char *) steps[1], sizeof(steps[1]));
-  }
-  else
-  {
-    CAT25512_read_block((SequenceCell+32)*sizeof(steps), (unsigned char *) steps[0], sizeof(steps[0]));
-    CAT25512_read_block((SequenceCell+32)*sizeof(steps)+sizeof(steps[0]), (unsigned char *) steps[1], sizeof(steps[1]));
-  }
-
-  //Block sliders scanning while voltages from slider and preset aren't equal
-  if (dip_config.b.SAVE_V_LEVEL == 1) {
-    for(cnt=0; cnt<16; cnt++)
-    {
-      steps[0][cnt].b.WaitVoltageSlider = 1;
-      steps[0][cnt].b.WaitTimeSlider = 1;
-      steps[1][cnt].b.WaitVoltageSlider = 1;
-      steps[1][cnt].b.WaitTimeSlider = 1;
-      steps[0][cnt+16].b.WaitVoltageSlider = 1;
-      steps[0][cnt+16].b.WaitTimeSlider = 1;
-      steps[1][cnt+16].b.WaitVoltageSlider = 1;
-      steps[1][cnt+16].b.WaitTimeSlider = 1;
-    };
-  };
-
-  afg1_mode = MODE_STOP;
-  afg2_mode = MODE_STOP;
-  if (steps[0][0].b.Swing){
-    swing1 = 1;
-  }
-  if (steps[1][0].b.Swing){
-    swing2 = 1;
-  }
-
-  mADC_init();
-
 };
 
 /*
@@ -502,64 +404,7 @@ void TIM7_IRQHandler() {
 
 // Clear switch scan
 void TIM6_DAC_IRQHandler() {
-  uButtons myButtons;
-  static uint8_t clear_counter1 = 0, clear_counter2 = 0;
-
-  TIM6->SR = (uint16_t) ~TIM_IT_Update;
-
-  myButtons.value = GetButton();
-
-  if(clear_counter1 < 30 && clear_counter2 < 30)
-  {
-    if(!myButtons.b.ClearUp || !myButtons.b.ClearDown)
-    {
-      if(!myButtons.b.ClearUp) clear_counter1++;
-      else clear_counter1 = 0;
-      if(!myButtons.b.ClearDown) clear_counter2++;
-      else clear_counter2 = 0;
-    }
-    else
-    {
-      clear_counter1 = 0;
-      clear_counter2 = 0;
-      TIM_SetCounter(TIM6, 0x00);
-      TIM6->CR1 &= ~TIM_CR1_CEN;
-    }
-  }
-  else if(clear_counter1 == 30 || clear_counter2 == 30)
-  {
-    //Clear state after leds blinking
-    LED_STEP_SendWord(0x0000);
-    delay_ms(500);
-    LED_STEP_SendWord(0xFFFF);
-    delay_ms(500);
-    LED_STEP_SendWord(0x0000);
-    delay_ms(500);
-    LED_STEP_SendWord(0xFFFF);
-    delay_ms(500);
-    LED_STEP_SendWord(0x0000);
-    delay_ms(500);
-    LED_STEP_SendWord(0xFFFF);
-
-    TIM_SetCounter(TIM6, 0x00);
-    TIM6->CR1 &= ~TIM_CR1_CEN;
-
-    if(clear_counter1 == 30) {
-      ClearProgram(0);
-      HardStop1();
-    }
-    else if(clear_counter2 == 30) {
-      ClearProgram(1);
-      HardStop2();
-    };
-
-    clear_counter1 = 0;
-    clear_counter2 = 0;
-
-    //If not in view mode switch in it
-    if (display_mode == DISPLAY_MODE_LOAD_1 || display_mode == DISPLAY_MODE_SAVE_1) display_mode = DISPLAY_MODE_VIEW_1;
-    if (display_mode == DISPLAY_MODE_LOAD_2 || display_mode == DISPLAY_MODE_SAVE_2) display_mode = DISPLAY_MODE_VIEW_2;
-  };
+  ControllerCheckClear();
 };
 
 /*
@@ -654,7 +499,6 @@ void InternalDACInit(void)
 unsigned char ProcessSwitchesActivity(uButtons * key)
 {
   unsigned char step_num = 0, section = 0;
-  uint8_t max_step = get_max_step();
 
   // Determine step num for different display modes
   if (display_mode == DISPLAY_MODE_VIEW_1) {
@@ -694,282 +538,8 @@ unsigned char ProcessSwitchesActivity(uButtons * key)
   // Apply programming from switches to active step
   ApplyProgrammingSwitches(section, step_num, key);
 
-  // TODO(maxl0rd): refactor out clear logic
-
-  if (!key->b.ClearUp)  {
-    // Init timer to detect long press (clear command)
-    InitClear_Timer();
-    if (display_mode == DISPLAY_MODE_LOAD_1) {
-      //if in load mode, restore sequence number gEditModeStepNum
-      LoadSequence(edit_mode_step_num);
-      keys_not_valid = 1;
-      display_mode = DISPLAY_MODE_VIEW_1;
-
-      afg1_prev_mode = afg1_mode;
-      afg1_step_num = 0;
-      afg1_mode = MODE_STOP;
-    }
-    else if (display_mode == DISPLAY_MODE_LOAD_2) {
-      //if in load mode, restore sequence number gEditModeStepNum
-      LoadSequence(edit_mode_step_num);
-      keys_not_valid = 1;
-      display_mode = DISPLAY_MODE_VIEW_2;
-
-      afg2_prev_mode = afg2_mode;
-      afg2_step_num = 0;
-      afg2_mode = MODE_STOP;
-    }
-
-    else if (display_mode == DISPLAY_MODE_VIEW_1) {
-      //if in view mode switch to load mode
-      display_mode = DISPLAY_MODE_LOAD_1;
-      edit_mode_step_num = 0;
-      update_display();
-    }
-    else if (display_mode == DISPLAY_MODE_VIEW_2) {
-      //if in view mode switch to load mode
-      display_mode = DISPLAY_MODE_LOAD_2;
-      edit_mode_step_num = 0;
-      update_display();
-    };
-  };
-
-  if (!key->b.ClearDown)  {
-    InitClear_Timer();
-    if (display_mode == DISPLAY_MODE_SAVE_1) {
-      //if in save mode - save sequence to memory cell gEditModeStepNum
-      SaveSequence(edit_mode_step_num);
-      display_mode = DISPLAY_MODE_VIEW_1;
-    }
-    else if (display_mode == DISPLAY_MODE_SAVE_2) {
-      //if in save mode - save sequence to memory cell gEditModeStepNum
-      SaveSequence(edit_mode_step_num);
-      display_mode = DISPLAY_MODE_VIEW_2;
-    }
-
-    else if (display_mode == DISPLAY_MODE_VIEW_1) {
-      //if in view mode - switch to save mode
-      display_mode = DISPLAY_MODE_SAVE_1;
-      edit_mode_step_num = 0;
-      display_update_flags.b.StepsDisplay = 1;
-      display_update_flags.b.MainDisplay = 1;
-    }
-
-    else if (display_mode == DISPLAY_MODE_VIEW_2) {
-      //if in view mode - switch to save mode
-      display_mode = DISPLAY_MODE_SAVE_2;
-      edit_mode_step_num = 0;
-      display_update_flags.b.StepsDisplay = 1;
-      display_update_flags.b.MainDisplay = 1;
-
-    };
-  };
-
-
-  // TODO: refactor out left/right logic into a controller module
-  //switch to edit mode
-  if ( !key->b.StepLeft ) {
-    if (display_mode == DISPLAY_MODE_VIEW_1) {
-      display_mode = DISPLAY_MODE_EDIT_1;
-      edit_mode_step_num += 1;
-    };
-    if (display_mode == DISPLAY_MODE_VIEW_2) {
-      display_mode = DISPLAY_MODE_EDIT_2;
-      edit_mode_step_num += 1;
-    };
-    if ( (display_mode == DISPLAY_MODE_EDIT_1) ||
-        (display_mode == DISPLAY_MODE_EDIT_2) ) {
-      if (edit_mode_step_num > 0) {
-        if(counterL == 0) edit_mode_step_num--;
-        //if long press switch to repeate selection
-        else if(counterL > 120) {
-          counterL = 100;
-          edit_mode_step_num--;
-        }
-        counterL++;
-        display_update_flags.b.MainDisplay = 1;
-        display_update_flags.b.StepsDisplay = 1;
-      } else {
-        if(counterL == 0) edit_mode_step_num = max_step;
-        else if(counterL > 120)	{
-          counterL = 100;
-          edit_mode_step_num = max_step;
-        }
-        counterL++;
-        //gEditModeStepNum = max_step;
-        display_update_flags.b.MainDisplay = 1;
-        display_update_flags.b.StepsDisplay = 1;
-      };
-    };
-
-    // Split load/save left/right
-
-    //if in save or load mode left buttons select memory cell for save/recall
-    if ( (display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
-        (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2) ) {
-      if (edit_mode_step_num > 0) {
-        if(counterL == 0) edit_mode_step_num--;
-        else if(counterL > 120) {
-          counterL = 100;
-          edit_mode_step_num--;
-        }
-        counterL++;
-        display_update_flags.b.StepsDisplay = 1;
-      } else {
-        if(counterL == 0)
-        {
-          if(!Is_Expander_Present())
-          {
-            edit_mode_step_num = 15;
-            if(bank == 1)
-            {
-              bank = 2;
-            }
-            else
-            {
-              bank = 1;
-            }
-          }
-          else edit_mode_step_num = 31;
-        }
-        else if(counterL > 120) {
-          counterL = 100;
-          if(!Is_Expander_Present())
-          {
-            edit_mode_step_num = 15;
-            if(bank == 1)
-            {
-              bank = 2;
-            }
-            else
-            {
-              bank = 1;
-            }
-          }
-          else edit_mode_step_num = 31;
-        }
-        counterL++;
-
-        display_update_flags.b.StepsDisplay = 1;
-      };
-    };
-  }
-  else
-  {
-    counterL = 0;
-  };
-
-  if ( !key->b.StepRight ) {
-    if (display_mode == DISPLAY_MODE_VIEW_1) {
-      display_mode = DISPLAY_MODE_EDIT_1;
-      edit_mode_step_num -= 1;
-    } else if (display_mode == DISPLAY_MODE_VIEW_2) {
-      display_mode = DISPLAY_MODE_EDIT_2;
-      edit_mode_step_num -= 1;
-    };
-    if ( (display_mode == DISPLAY_MODE_EDIT_1) ||
-        (display_mode == DISPLAY_MODE_EDIT_2) ) {
-      if (edit_mode_step_num < max_step) {
-        if(counterR == 0) edit_mode_step_num++;
-        else if (counterR > 120)//was 600
-        {
-          counterR = 100;//was 500
-          edit_mode_step_num++;
-        }
-      } else {
-        if(counterR == 0) edit_mode_step_num = 0;
-        else if(counterR > 120)
-        {
-          counterR = 100;
-          edit_mode_step_num = 0;
-        }
-      }
-      counterR++;
-      display_update_flags.b.MainDisplay = 1;
-      display_update_flags.b.StepsDisplay = 1;
-    }
-
-    //if in save or load mode right buttons select memory cell for save/recall
-    if ( (display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
-        (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2)) {
-      if (edit_mode_step_num < max_step) {
-        if(counterR == 0) edit_mode_step_num++;
-        else if(counterR > 120) {
-          counterR = 100;
-          edit_mode_step_num++;
-        }
-        counterR++;
-        display_update_flags.b.StepsDisplay = 1;
-      } else {
-        if(counterR == 0)
-        {
-          if(!Is_Expander_Present())
-          {
-            edit_mode_step_num = 0;
-            if(bank == 1)
-            {
-              bank = 2;
-
-            }
-            else
-            {
-              bank = 1;
-            }
-          }
-          else
-          {
-            edit_mode_step_num = 0;
-          }
-        }
-        else if(counterR > 120) {
-          counterR = 100;
-          if(!Is_Expander_Present())
-          {
-            edit_mode_step_num = 0;
-            if(bank == 1)
-            {
-              bank = 2;
-
-            }
-            else
-            {
-              bank = 1;
-            }
-          }
-          else
-          {
-            edit_mode_step_num = 0;
-          }
-        }
-        counterR++;
-
-        display_update_flags.b.StepsDisplay = 1;
-      };
-    };
-  }
-  else
-  {
-    counterR = 0;
-  };
-  key_locked = 1;
-
-  //Sections 1/2
-  if (keys_not_valid == 0) {
-
-    if (!key->b.StageAddress1Display) {
-      if (display_mode != DISPLAY_MODE_VIEW_1) {
-        display_mode = DISPLAY_MODE_VIEW_1;
-      }
-    }
-
-
-    if (!key->b.StageAddress2Display) {
-      if (display_mode != DISPLAY_MODE_VIEW_2) {
-        display_mode = DISPLAY_MODE_VIEW_2;
-        key_locked = 0;
-      }
-    }
-  }
+  // Apply clear, left, right, etc switches
+  ControllerProcessSwitches(key);
 
   // Only do one of reset, strobe or advance
   if (!key->b.StageAddress1Reset) {

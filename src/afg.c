@@ -89,23 +89,16 @@ void DoStart1() {
     // Start run
     afg1_mode = MODE_RUN;
     afg1_step_num = GetNextStep(0, afg1_step_num);
+    afg1_step_cnt = 0;
     update_display();
     DoStepOutputPulses1();
   }
 
-  if (afg1_mode == MODE_WAIT_HI_Z) {
-    // If on enable step, start running again if high
+  if (afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
+    // If on sustain or enable step, check after timer
     InitStart_1_SignalTimer();
-    afg1_mode = MODE_RUN;
-    afg1_step_num = GetNextStep(0, afg1_step_num);
-    update_display();
-    DoStepOutputPulses1();
+    // Calls CheckStart1() later
   }
-
-  if (afg1_mode == MODE_STAY_HI_Z) {
-    // Sustain step, check start
-    InitStart_1_SignalTimer();
-  };
 }
 
 // Returns 1 when starting running again
@@ -124,6 +117,7 @@ uint8_t CheckStart1() {
   if (run_again) {
     afg1_mode = MODE_RUN;
     afg1_step_num = GetNextStep(0, afg1_step_num);
+    afg1_step_cnt = 0;
     DoStepOutputPulses1();
     return 1;
   } else {
@@ -134,19 +128,12 @@ uint8_t CheckStart1() {
 void DoStart2() {
   if (afg2_mode == MODE_STOP || afg2_mode == MODE_ADVANCE) {
     afg2_mode = MODE_RUN;
-    update_display();
     afg2_step_num = GetNextStep(1, afg2_step_num);
-    DoStepOutputPulses2();
-  }
-  if(afg2_mode == MODE_WAIT_HI_Z) {
-    InitStart_2_SignalTimer();
-    afg2_mode = MODE_RUN;
-    afg2_step_num = GetNextStep(1, afg2_step_num);
+    afg2_step_cnt = 0;
     update_display();
     DoStepOutputPulses2();
   }
-
-  if(afg2_mode == MODE_STAY_HI_Z) {
+  if(afg2_mode == MODE_WAIT_HI_Z || afg2_mode == MODE_STAY_HI_Z) {
     InitStart_2_SignalTimer();
   }
 }
@@ -167,6 +154,7 @@ uint8_t CheckStart2() {
   if (run_again) {
     afg2_mode = MODE_RUN;
     afg2_step_num = GetNextStep(1, afg2_step_num);
+    afg2_step_cnt = 0;
     DoStepOutputPulses2();
     return 1;
   } else {
@@ -183,7 +171,7 @@ void JumpToStep1(unsigned int step) {
   // Then update the step number to where ever we are strobing to
   afg1_step_num = step;
 
-  // Reset step width
+  // Reset step counter
   afg1_step_cnt = 0;
 
   // Break out of some modes
@@ -311,27 +299,37 @@ void AfgTick1() {
 
   if (afg1_step_cnt < step_width) {
     afg1_step_cnt += 1;
-  };
+  } else {
+    afg1_step_cnt = step_width + 1;
+  }
 
   // Check if we're at the end of the step
-  if ((afg1_step_cnt >= step_width)) {
+  if (afg1_mode == MODE_WAIT) {
+      // Continuous step address mode. Check if the step has changed by the stage address, not the timer.
+      if (afg1_step_num != (unsigned int) (afg1_stage_address)) {
+        // Sample and hold current voltage output value
+        afg1_prev_step_level = afg1_step_level;
+        afg1_step_num = (unsigned int) (afg1_stage_address);
+        // Reset step counter
+        afg1_step_cnt = 0;
+        do_pulses = 1;
+      }
+  } else if ((afg1_step_cnt >= step_width)) {
     // Sample and hold current step value into PreviousStep for next step slope computation
     afg1_prev_step_level = afg1_step_level;
-
-    // Reset step width
-    afg1_step_cnt = 0;
 
     // Resolve mode change for step end
 
     if ((afg1_mode == MODE_ADVANCE)) {
       // Stop after advance
       afg1_mode =  MODE_STOP;
+      // Don't reset
     };
 
     if (steps[0][afg1_step_num].b.OpModeSTOP) {
       // Stop step
-      afg1_prev_mode = afg1_mode;
       afg1_mode = MODE_STOP;
+      // Don't reset step counter
     };
 
     if (steps[0][afg1_step_num].b.OpModeENABLE
@@ -342,6 +340,7 @@ void AfgTick1() {
         afg1_prev_mode = afg1_mode;
         afg1_mode = MODE_WAIT_HI_Z;
       };
+      afg1_step_cnt = 0; // Reset step counter
     };
 
     if (steps[0][afg1_step_num].b.OpModeSUSTAIN
@@ -353,38 +352,18 @@ void AfgTick1() {
         afg1_mode = MODE_STAY_HI_Z;
         InitStart_1_SignalTimer();
       };
+      // Don't reset step counter
     };
 
     if (afg1_mode == MODE_RUN) {
       // Advance to the next step
       afg1_step_num = GetNextStep(0, afg1_step_num);
       do_pulses = 1;
+      afg1_step_cnt = 0; // Reset step counter
     };
   };
 
-
-  if (afg1_mode == MODE_WAIT) {
-    // Continuous step address mode. Check if the step has changed.
-    if (afg1_step_num != (unsigned int) (afg1_stage_address)) {
-      // Sample and hold current voltage output value
-      afg1_prev_step_level = afg1_step_level;
-      afg1_step_num = (unsigned int) (afg1_stage_address);
-      // Reset step width
-      afg1_step_cnt = 0;
-      do_pulses = 1;
-    }
-  };
-
-  if (afg1_mode == MODE_WAIT_STROBE) {
-    // What does this do? Is it ever in this mode?
-    afg1_step_num = (unsigned int) (afg1_stage_address);
-    afg1_mode = afg1_prev_mode;
-  }
-
-  if (display_mode == DISPLAY_MODE_VIEW_1) {
-    display_update_flags.b.MainDisplay = 1;
-    display_update_flags.b.StepsDisplay = 1;
-  };
+  if (display_mode == DISPLAY_MODE_VIEW_1) update_display();
 
   // Now set output voltages
   // Compute the current step's programmed voltage output
@@ -411,10 +390,10 @@ void AfgTick1() {
   MAX5135_DAC_send(MAX5135_DAC_CH_0, steps[0][afg1_step_num].b.TLevel >> 2);
 
   // Set AFG1 reference out value
-  if (afg1_mode == MODE_RUN || afg1_mode == MODE_ADVANCE) {
+  if (afg1_step_cnt < step_width) {
     // (Slopes down from 1023 to 0 over the course of the step)
     MAX5135_DAC_send(MAX5135_DAC_CH_1,
-        1023 - (unsigned int) ((1023.0 / (float) step_width) * ((float) afg1_step_cnt)));
+        1023 - (uint16_t) ((1023.0 / (float) step_width) * ((float) afg1_step_cnt)));
   } else {
     // No reference output when not running
     MAX5135_DAC_send(MAX5135_DAC_CH_1, 0);
@@ -436,18 +415,28 @@ void AfgTick2() {
 
   if (afg2_step_cnt < step_width) {
     afg2_step_cnt += 1;
-  };
+  } else {
+    afg2_step_cnt = step_width;
+  }
 
-  if ((afg2_step_cnt >= step_width)) {
+  if (afg2_mode == MODE_WAIT) {
+    if (afg2_step_num != (unsigned int) (afg2_stage_address)) {
+      // Sample and hold current voltage output value
+      afg2_prev_step_level = afg2_step_level;
+      afg2_step_num = (unsigned int) (afg2_stage_address);
+      // Reset step counter
+      afg2_step_cnt = 0;
+      do_pulses = 1;
+    }
+  } else if (afg2_step_cnt >= step_width) {
     afg2_prev_step_level = afg2_step_level;
-    afg2_step_cnt = 0;
 
     if ((afg2_mode == MODE_ADVANCE)) {
+      afg2_prev_step_level = afg2_step_level;
       afg2_mode =  MODE_STOP;
     };
 
     if (steps[1][afg2_step_num].b.OpModeSTOP) {
-      afg2_prev_mode = afg2_mode;
       afg2_mode = MODE_STOP;
     };
 
@@ -457,6 +446,7 @@ void AfgTick2() {
         afg2_prev_mode = afg2_mode;
         afg2_mode = MODE_WAIT_HI_Z;
       };
+      afg2_step_cnt = 0;
     };
 
     if ((steps[1][afg2_step_num].b.OpModeSUSTAIN
@@ -466,35 +456,17 @@ void AfgTick2() {
         afg2_mode = MODE_STAY_HI_Z;
         InitStart_2_SignalTimer();
       }
+      // Don't reset
     };
 
     if (afg2_mode == MODE_RUN) {
       afg2_step_num = GetNextStep(1, afg2_step_num);
       do_pulses = 1;
+      afg2_step_cnt = 0;
     };
   }
 
-  if (afg2_mode == MODE_WAIT) {
-    if (afg2_step_num != (unsigned int) (afg2_stage_address)) {
-      // Sample and hold current voltage output value
-      afg2_prev_step_level = afg2_step_level;
-      afg2_step_num = (unsigned int) (afg2_stage_address);
-      // Reset step width
-      afg2_step_cnt = 0;
-      do_pulses = 1;
-    }
-  };
-
-  if (afg2_mode == MODE_WAIT_STROBE) {
-    // What does this do?
-    afg2_step_num = (unsigned int) (afg2_stage_address);
-    afg2_mode = afg2_prev_mode;
-  }
-
-  if (display_mode == DISPLAY_MODE_VIEW_2) {
-    display_update_flags.b.MainDisplay = 1;
-    display_update_flags.b.StepsDisplay = 1;
-  };
+  if (display_mode == DISPLAY_MODE_VIEW_2) update_display();
 
   output_voltage = GetStepVoltage(1, afg2_step_num);
 
@@ -503,7 +475,6 @@ void AfgTick2() {
       delta_voltage = (float) (afg2_prev_step_level - output_voltage) / step_width;
       output_voltage = afg2_prev_step_level - (unsigned int) (delta_voltage * afg2_step_cnt);
     } else if (output_voltage > afg2_prev_step_level) {
-      // Slope up
       delta_voltage =  (float) (output_voltage - afg2_prev_step_level) / step_width;
       output_voltage = afg2_prev_step_level + (unsigned int) (delta_voltage * afg2_step_cnt);
     }
@@ -514,9 +485,9 @@ void AfgTick2() {
 
   MAX5135_DAC_send(MAX5135_DAC_CH_2, steps[1][afg2_step_num].b.TLevel >> 2);
 
-  if (afg2_mode == MODE_RUN || afg2_mode == MODE_ADVANCE) {
+  if (afg2_step_cnt < step_width) {
     MAX5135_DAC_send(MAX5135_DAC_CH_3,
-        1023 - (unsigned int) (((float) 0x3FF/ (float) step_width) * ((float) afg2_step_cnt)));
+        1023 - (unsigned int) ((1023.0 / (float) step_width) * ((float) afg2_step_cnt)));
   } else {
     MAX5135_DAC_send(MAX5135_DAC_CH_3, 0);
   }
