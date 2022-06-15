@@ -111,14 +111,14 @@ inline void HardStop2() {
 inline void DoAdvance1() {
   if (afg1_mode != MODE_WAIT) {
     if (afg1_mode == MODE_STOP) afg1_mode = MODE_ADVANCE;
-    JumpToStep1(GetNextStep(0, afg1_step_num));
+    JumpToStep1(GetNextStep(afg1_section, afg1_step_num));
   }
 }
 
 inline void DoAdvance2() {
   if (afg2_mode != MODE_WAIT) {
     if (afg2_mode == MODE_STOP) afg2_mode = MODE_ADVANCE;
-    JumpToStep2(GetNextStep(1, afg2_step_num));
+    JumpToStep2(GetNextStep(afg2_section, afg2_step_num));
   }
 }
 

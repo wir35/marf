@@ -73,12 +73,16 @@ void ControllerProcessSwitches(uButtons* key) {
   if (!Is_Expander_Present()) {
     if (!key->b.StepLeft && !key->b.StageAddress1Display) {
       afg1_section = 0;
+      display_mode = DISPLAY_MODE_VIEW_1;
     } else if (!key->b.StepRight && !key->b.StageAddress1Display) {
       afg1_section = 1;
+      display_mode = DISPLAY_MODE_VIEW_1;
     } else if (!key->b.StepLeft && !key->b.StageAddress2Display) {
       afg2_section = 0;
+      display_mode = DISPLAY_MODE_VIEW_2;
     } else if (!key->b.StepRight && !key->b.StageAddress2Display) {
       afg2_section = 1;
+      display_mode = DISPLAY_MODE_VIEW_2;
     }
   }
 

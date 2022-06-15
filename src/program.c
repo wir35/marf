@@ -168,9 +168,10 @@ uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
 // In the event that the end of a loop is reached,
 // the closest previous "first" step is next (or 0 if none).
 uint8_t GetNextStep(uint8_t section, uint8_t step_num) {
-  uint8_t next_step = step_num;
-
-  step_num += section << 4; // section select
+  uint8_t step_zero = section << 4;
+  uint8_t next_step = step_num + step_zero;
+  uint8_t max_step = get_max_step() + step_zero;
+  step_num += step_zero;
 
   if (steps[step_num].b.CycleLast) {
     // Current step is the end of a loop.
@@ -182,8 +183,11 @@ uint8_t GetNextStep(uint8_t section, uint8_t step_num) {
   } else {
     // Otherwise just advance 1 and check for wrap around
     next_step++;
-    if (next_step > get_max_step()) next_step = 0;
+    if (next_step > max_step) {
+      next_step = step_zero;
+    }
   }
+  next_step -= step_zero;
   return next_step;
 };
 

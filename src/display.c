@@ -90,18 +90,20 @@ void UpdateModeSectionLeds() {
 
   switch (display_mode) {
   case DISPLAY_MODE_VIEW_1:
-    led_step = get_step_programming(0, afg1_step_num);
+    led_step = get_step_programming(afg1_section, afg1_step_num);
     UpdateLedsProgramMode(&mLeds, &led_step);
     UpdateStepSection(afg1_step_num);
+    break;
   case DISPLAY_MODE_EDIT_1:
     led_step = get_step_programming(edit_mode_section, edit_mode_step_num);
     UpdateLedsProgramMode(&mLeds, &led_step);
     UpdateStepSection(edit_mode_step_num);
     break;
   case DISPLAY_MODE_VIEW_2:
-    led_step = get_step_programming(1, afg2_step_num);
+    led_step = get_step_programming(afg2_section, afg2_step_num);
     UpdateLedsProgramMode(&mLeds, &led_step);
     UpdateStepSection(afg2_step_num);
+    break;
   case DISPLAY_MODE_EDIT_2:
     led_step = get_step_programming(edit_mode_section, edit_mode_step_num);
     UpdateLedsProgramMode(&mLeds, &led_step);

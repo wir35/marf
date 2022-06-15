@@ -842,10 +842,6 @@ int main(void)
     if (display_update_flags.b.MainDisplay) {
       UpdateModeSectionLeds();
       display_update_flags.b.MainDisplay = 0;
-      if ((display_mode == DISPLAY_MODE_SAVE_1) || (display_mode == DISPLAY_MODE_SAVE_2) ||
-          (display_mode == DISPLAY_MODE_LOAD_1) || (display_mode == DISPLAY_MODE_LOAD_2)) {
-        display_update_flags.b.MainDisplay = 1;
-      }
     };
     if (display_update_flags.b.StepsDisplay) {
       UpdateStepSection();
