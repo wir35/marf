@@ -376,36 +376,36 @@ void AfgTick1() {
   // Compute the current step's programmed voltage output
   output_voltage = GetStepVoltage(afg1_section, afg1_step_num);
 
-  // If the step is sloped, then slope from PreviousStep to the new output value
-  if (get_step_programming(afg1_section, afg1_step_num).b.Sloped ) {
-    if (afg1_prev_step_level >= output_voltage) {
-      // Slope down
-      delta_voltage = (float) (afg1_prev_step_level - output_voltage) / step_width;
-      output_voltage = afg1_prev_step_level - (unsigned int) (delta_voltage * afg1_step_cnt);
-    } else if (output_voltage > afg1_prev_step_level) {
-      // Slope up
-      delta_voltage =  (float) (output_voltage - afg1_prev_step_level) / step_width;
-      output_voltage = afg1_prev_step_level + (unsigned int) (delta_voltage * afg1_step_cnt);
+  // Set AFG1 time out value
+  MAX5135_DAC_send(MAX5135_DAC_CH_0,
+      GetStepTime(afg1_section, afg1_step_num) >> 2);
+
+  if (afg1_step_cnt < step_width) {
+    // Set AFG1 reference out value
+    // (Slopes down from 1023 to 0 over the course of the step)
+    MAX5135_DAC_send(MAX5135_DAC_CH_1,
+        1023 - (uint16_t) ((1023.0 / (float) step_width) * ((float) afg1_step_cnt)));
+
+    // If the step is sloped, then slope from PreviousStep to the new output value
+    if (get_step_programming(afg1_section, afg1_step_num).b.Sloped ) {
+      if (afg1_prev_step_level >= output_voltage) {
+        // Slope down
+        delta_voltage = (float) (afg1_prev_step_level - output_voltage) / step_width;
+        output_voltage = afg1_prev_step_level - (unsigned int) (delta_voltage * afg1_step_cnt);
+      } else if (output_voltage > afg1_prev_step_level) {
+        // Slope up
+        delta_voltage = (float) (output_voltage - afg1_prev_step_level) / step_width;
+        output_voltage = afg1_prev_step_level + (unsigned int) (delta_voltage * afg1_step_cnt);
+      }
     }
+  } else {
+    // No reference output when not running
+    MAX5135_DAC_send(MAX5135_DAC_CH_1, 0);
   }
 
   // Set DAC channel 1 to AFG1 voltage out value
   afg1_step_level = output_voltage;
   DAC_SetChannel1Data(DAC_Align_12b_R, output_voltage);
-
-  // Set AFG1 time out value
-  MAX5135_DAC_send(MAX5135_DAC_CH_0,
-      GetStepTime(afg1_section, afg1_step_num) >> 2);
-
-  // Set AFG1 reference out value
-  if (afg1_step_cnt < step_width) {
-    // (Slopes down from 1023 to 0 over the course of the step)
-    MAX5135_DAC_send(MAX5135_DAC_CH_1,
-        1023 - (uint16_t) ((1023.0 / (float) step_width) * ((float) afg1_step_cnt)));
-  } else {
-    // No reference output when not running
-    MAX5135_DAC_send(MAX5135_DAC_CH_1, 0);
-  }
 
   // Now that output voltages are set, pulses can fire now
   if (do_pulses) DoStepOutputPulses1();
@@ -477,29 +477,28 @@ void AfgTick2() {
 
   output_voltage = GetStepVoltage(afg2_section, afg2_step_num);
 
-  if (get_step_programming(afg2_section, afg2_step_num).b.Sloped ) {
-    if (afg2_prev_step_level >= output_voltage) {
-      delta_voltage = (float) (afg2_prev_step_level - output_voltage) / step_width;
-      output_voltage = afg2_prev_step_level - (unsigned int) (delta_voltage * afg2_step_cnt);
-    } else if (output_voltage > afg2_prev_step_level) {
-      delta_voltage =  (float) (output_voltage - afg2_prev_step_level) / step_width;
-      output_voltage = afg2_prev_step_level + (unsigned int) (delta_voltage * afg2_step_cnt);
-    }
-  }
-
-  afg2_step_level = output_voltage;
-  DAC_SetChannel2Data(DAC_Align_12b_R, output_voltage);
-
   MAX5135_DAC_send(MAX5135_DAC_CH_2, GetStepTime(afg2_section, afg2_step_num) >> 2);
 
   if (afg2_step_cnt < step_width) {
     MAX5135_DAC_send(MAX5135_DAC_CH_3,
         1023 - (unsigned int) ((1023.0 / (float) step_width) * ((float) afg2_step_cnt)));
+
+    if (get_step_programming(afg2_section, afg2_step_num).b.Sloped ) {
+      if (afg2_prev_step_level >= output_voltage) {
+        delta_voltage = (float) (afg2_prev_step_level - output_voltage) / step_width;
+        output_voltage = afg2_prev_step_level - (unsigned int) (delta_voltage * afg2_step_cnt);
+      } else if (output_voltage > afg2_prev_step_level) {
+        delta_voltage =  (float) (output_voltage - afg2_prev_step_level) / step_width;
+        output_voltage = afg2_prev_step_level + (unsigned int) (delta_voltage * afg2_step_cnt);
+      }
+    }
   } else {
     MAX5135_DAC_send(MAX5135_DAC_CH_3, 0);
   }
 
-  // Now that output voltages are set, pulses can fire now
+  afg2_step_level = output_voltage;
+  DAC_SetChannel2Data(DAC_Align_12b_R, output_voltage);
+
   if (do_pulses) DoStepOutputPulses2();
 };
 
