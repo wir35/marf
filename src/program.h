@@ -79,7 +79,7 @@ uint16_t GetStepVoltage(uint8_t section, uint8_t step_num);
 
 uint16_t GetStepTime(uint8_t section, uint8_t step_num);
 
-uint32_t GetStepWidth(uint8_t section, uint8_t step_num);
+uint32_t GetStepWidth(uint8_t section, uint8_t step_num, float time_multiplier);
 
 uint8_t GetNextStep(uint8_t section, uint8_t step_num);
 

@@ -60,9 +60,9 @@ extern volatile uint8_t afg1_section;
 extern volatile uint8_t afg2_section;
 
 // Timing constants
-#define STEP_TIMER_FREQ_OUT   8000    // 250uSec per timer period "tick"
-#define STEP_TIMER_PRESCALER  168000000/2/1/STEP_TIMER_FREQ_OUT // 10500.0 // (168000000/2/1/STEP_TIMER_FREQ_OUT)
-#define START_TIMER_SUSTAIN   1       // 250 uSec or "1 tick"
+#define STEP_TIMER_FREQ_OUT   8000     // 8 kHz
+#define STEP_TIMER_PRESCALER  21000    // 168000000 / STEP_TIMER_FREQ_OUT
+#define START_TIMER_SUSTAIN   1        // 1 tick
 
 // Get the step num, taking into account section offset
 inline uint8_t get_afg1_step_num() {
@@ -217,15 +217,8 @@ inline void DisableContinuousStageAddress2() {
   }
 }
 
-// ([0 - 4095] / 4095) * 3.5 + 0.5
-#define TIME_MULTIPLIER_SCALER 0.0008547
+float GetTimeMultiplier1();
 
-inline float GetTimeMultiplier1() {
-  return read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_1) * TIME_MULTIPLIER_SCALER + 0.5f;
-}
-
-inline float GetTimeMultiplier2() {
-  return read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_2) * TIME_MULTIPLIER_SCALER + 0.5f;
-}
+float GetTimeMultiplier2();
 
 #endif

@@ -295,18 +295,16 @@ void DoStrobe2() {
  */
 void AfgTick1() {
 
-  uint16_t step_width = 0; // Step width = number of timer ticks
+  uint32_t step_width = 0; // Step width = number of timer ticks
   float delta_voltage = 0.0;
   uint16_t output_voltage = 0;
   uint8_t do_pulses = 0; // 1 if pulses should fire
 
   // Calculate step duration
-  step_width = GetStepWidth(afg1_section, afg1_step_num);
+  step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());
 
   if (afg1_step_cnt < step_width) {
     afg1_step_cnt += 1;
-  } else {
-    afg1_step_cnt = step_width + 1;
   }
 
   // Check if we're at the end of the step
@@ -323,6 +321,9 @@ void AfgTick1() {
   } else if ((afg1_step_cnt >= step_width)) {
     // Sample and hold current step value into PreviousStep for next step slope computation
     afg1_prev_step_level = afg1_step_level;
+
+    // Pin step count to max value to stop ref
+    afg1_step_cnt = 0xFFFFFFFF;
 
     // Resolve mode change for step end
 
@@ -418,12 +419,10 @@ void AfgTick2() {
   uint16_t output_voltage = 0;
   uint8_t do_pulses = 0;
 
-  step_width = GetStepWidth(afg2_section, afg2_step_num);
+  step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());
 
   if (afg2_step_cnt < step_width) {
     afg2_step_cnt += 1;
-  } else {
-    afg2_step_cnt = step_width;
   }
 
   if (afg2_mode == MODE_WAIT) {
@@ -436,6 +435,7 @@ void AfgTick2() {
       do_pulses = 1;
     }
   } else if (afg2_step_cnt >= step_width) {
+    afg2_step_cnt = 0xFFFFFFFF;
     afg2_prev_step_level = afg2_step_level;
 
     if ((afg2_mode == MODE_ADVANCE)) {
@@ -502,3 +502,33 @@ void AfgTick2() {
   // Now that output voltages are set, pulses can fire now
   if (do_pulses) DoStepOutputPulses2();
 };
+
+#define TIME_MULTIPLIER_SCALER 0.0009766
+
+// The panel is marked for log scale (0.5, 1, 2, 4) but linear pots are used.
+// Scale the time multipliers to more closely match the panel.
+// Use a linear interpolation between the points instead of log2.
+
+inline float fake_log2(float linear_val) {
+  if (linear_val < 1365.0) {
+    // 512 - 1024 or 0.5 - 1
+    return linear_val * 0.375 + 512.0;
+  } else if (linear_val < 2730) {
+    // 1024 - 2048 or 1 - 2
+    return (linear_val - 1365) * 0.882 + 1024.0;
+  } else {
+    // 2048 - 4095 or 2 - 4
+    return (linear_val - 2730) * 1.5 + 2048.0;
+  }
+}
+
+float GetTimeMultiplier1() {
+  return fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_1)) * TIME_MULTIPLIER_SCALER;
+}
+
+float GetTimeMultiplier2() {
+  return fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_2)) * TIME_MULTIPLIER_SCALER;
+}
+
+
+

@@ -262,7 +262,7 @@ void TIM4_IRQHandler() {
   AfgTick1();
 
   // Adjust timer prescaler for time multiplier
-  TIM4->PSC = (uint16_t) (GetTimeMultiplier1() * STEP_TIMER_PRESCALER);
+  TIM4->PSC = STEP_TIMER_PRESCALER; // (uint16_t) (GetTimeMultiplier1() * STEP_TIMER_PRESCALER);
 
   // Clear interrupt flag for Timer 4
   TIM4->SR = (uint16_t) ~TIM_IT_Update;
@@ -276,7 +276,7 @@ void TIM5_IRQHandler() {
   AfgTick2();
 
   // Adjust timer prescaler for time multiplier
-  TIM5->PSC = (uint16_t) (GetTimeMultiplier2() * STEP_TIMER_PRESCALER);
+  TIM5->PSC = STEP_TIMER_PRESCALER; // (uint16_t) (GetTimeMultiplier2() * STEP_TIMER_PRESCALER);
 
   // Clear interrupt flag for Timer 5
   TIM5->SR = (uint16_t) ~TIM_IT_Update;

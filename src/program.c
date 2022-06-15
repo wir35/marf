@@ -113,8 +113,8 @@ uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
 // This is how this math works:
 // Each tick is 250 usec.
 // The minimum value is 0.002s or 2ms or 8 ticks
-// The maximum range is 2s-30s which is 112000 ticks.
-uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
+// The maximum range is 2s-30s which is 120000 ticks.
+uint32_t GetStepWidth(uint8_t section, uint8_t step_num, float time_multiplier) {
   float step_width = 0.0;
   float time_level = 0.0;
   uint8_t ext_ban_num = 0;
@@ -133,7 +133,7 @@ uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
 
   // This magic number is 112000/4095
   // This is the step width for the 2-30 range
-  step_width = time_level * 27.35043 + 8000.0;
+  step_width = time_level * 27.3504 + 8000.0;
 
   if (steps[step_num].b.TimeRange_p03 == 1) {
     step_width *= 0.001;
@@ -143,7 +143,7 @@ uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
     step_width *= 0.1;
   }
 
-  return (uint32_t) step_width;
+  return (uint32_t) step_width * time_multiplier + 0.5;
 };
 
 uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
