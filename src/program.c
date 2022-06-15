@@ -63,16 +63,17 @@ uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
 
   float voltage_level = 0.0; // stay in floating point throughout!
   uint8_t ext_ban_num = 0;
+  uint8_t slider_num = step_num;
 
   step_num += section << 4; // section select
 
   if (steps[step_num].b.VoltageSource) {
     // Step voltage is set externally
-    ext_ban_num = sliders[step_num].VLevel >> 10;
+    ext_ban_num = sliders[slider_num].VLevel >> 10;
     voltage_level = read_calibrated_add_data_float(ext_ban_num);
   } else {
     // Step voltage is set by slider
-    voltage_level = sliders[step_num].VLevel;
+    voltage_level = sliders[slider_num].VLevel;
   };
 
   // Clamp if smoothing or something has gone awry
@@ -117,16 +118,17 @@ uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
   float step_width = 0.0;
   float time_level = 0.0;
   uint8_t ext_ban_num = 0;
+  uint8_t slider_num = step_num;
 
   step_num += section << 4; // section select
 
   if (steps[step_num].b.TimeSource) {
     // Step time is set externally
-    ext_ban_num = (uint8_t) sliders[step_num].TLevel >> 10;
+    ext_ban_num = (uint8_t) sliders[slider_num].TLevel >> 10;
     time_level = read_calibrated_add_data_float(ext_ban_num);
   } else {
     // Step time is set on panel
-    time_level = (float) sliders[step_num].TLevel;
+    time_level = (float) sliders[slider_num].TLevel;
   };
 
   // This magic number is 112000/4095
@@ -147,16 +149,17 @@ uint32_t GetStepWidth(uint8_t section, uint8_t step_num) {
 uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
   float time_level = 0.0;
   uint8_t ext_ban_num = 0;
+  uint8_t slider_num = step_num;
 
   step_num += section << 4; // section select
 
   if (steps[step_num].b.TimeSource) {
     // Step time is set externally
-    ext_ban_num = (uint8_t) sliders[step_num].TLevel >> 10;
+    ext_ban_num = (uint8_t) sliders[slider_num].TLevel >> 10;
     time_level = read_calibrated_add_data_uint16(ext_ban_num);
   } else {
     // Step time is set on panel
-    time_level = sliders[step_num].TLevel;
+    time_level = sliders[slider_num].TLevel;
   };
   return time_level;
 }

@@ -135,3 +135,21 @@ void UpdateStepSection() {
     LED_STEP_LightStep(edit_mode_step_num);
   }
 }
+
+void RunClearAnimation() {
+  if (Is_Expander_Present()) {
+    for (uint8_t i = 0; i < 8; i++) {
+      LED_STEP_SendWordExpanded(0x00000000);
+      delay_ms(60);
+      LED_STEP_SendWordExpanded(0xFFFFFFFF);
+      delay_ms(60);
+    }
+  } else {
+    for (uint8_t i = 0; i < 8; i++) {
+      LED_STEP_SendWord(0x0000);
+      delay_ms(60);
+      LED_STEP_SendWord(0xFFFF);
+      delay_ms(60);
+    }
+  }
+}

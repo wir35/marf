@@ -4,6 +4,7 @@
 #include "display.h"
 #include "afg.h"
 #include "leds_step.h"
+#include "expander.h"
 
 // Step selected for editing (0-31)
 volatile uint8_t edit_mode_step_num = 0;
@@ -57,10 +58,27 @@ void ControllerProcessSwitches(uButtons* key) {
     if (display_mode == DISPLAY_MODE_VIEW_1) {
       display_mode = DISPLAY_MODE_EDIT_1;
       edit_mode_section = afg1_section;
+      right_counter = LONG_COUNTER_TICKS;
+      left_counter = LONG_COUNTER_TICKS;
     }
     else if (display_mode == DISPLAY_MODE_VIEW_2) {
       display_mode = DISPLAY_MODE_EDIT_2;
       edit_mode_section = afg2_section;
+      right_counter = LONG_COUNTER_TICKS;
+      left_counter = LONG_COUNTER_TICKS;
+    }
+  }
+
+  // Section shift for each afg in 16 slider mode
+  if (!Is_Expander_Present()) {
+    if (!key->b.StepLeft && !key->b.StageAddress1Display) {
+      afg1_section = 0;
+    } else if (!key->b.StepRight && !key->b.StageAddress1Display) {
+      afg1_section = 1;
+    } else if (!key->b.StepLeft && !key->b.StageAddress2Display) {
+      afg2_section = 0;
+    } else if (!key->b.StepRight && !key->b.StageAddress2Display) {
+      afg2_section = 1;
     }
   }
 
@@ -114,7 +132,7 @@ void ControllerCheckClear() {
   myButtons.value = GetButton();
 
   if (clear_counter1 < 30 && clear_counter2 < 30) {
-    if(!myButtons.b.ClearUp || !myButtons.b.ClearDown) {
+    if (!myButtons.b.ClearUp || !myButtons.b.ClearDown) {
       if (!myButtons.b.ClearUp) clear_counter1++;
       else clear_counter1 = 0;
       if (!myButtons.b.ClearDown) clear_counter2++;
@@ -127,19 +145,8 @@ void ControllerCheckClear() {
     }
   }
   else if (clear_counter1 == 30 || clear_counter2 == 30) {
-    // Clear state after leds blinking
-    // TODO: better animation
-    LED_STEP_SendWord(0x0000);
-    delay_ms(500);
-    LED_STEP_SendWord(0xFFFF);
-    delay_ms(500);
-    LED_STEP_SendWord(0x0000);
-    delay_ms(500);
-    LED_STEP_SendWord(0xFFFF);
-    delay_ms(500);
-    LED_STEP_SendWord(0x0000);
-    delay_ms(500);
-    LED_STEP_SendWord(0xFFFF);
+    // Signal by flashing step leds
+    RunClearAnimation();
 
     TIM_SetCounter(TIM6, 0x00);
     TIM6->CR1 &= ~TIM_CR1_CEN;

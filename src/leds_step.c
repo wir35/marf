@@ -65,7 +65,7 @@ void LED_STEP_SendWord(unsigned long int data)
 void LED_STEP_LightStep(unsigned int StepNum)
 {
 	unsigned long dat = 0xFFFFFFFF;
-	unsigned char cnt, tmp1, tmp2;
+	unsigned char cnt;
 	
 	dat &= ~(1<<0);
 	for(cnt=0;cnt<StepNum;cnt++)
@@ -74,23 +74,22 @@ void LED_STEP_LightStep(unsigned int StepNum)
 		dat |= (1<<0);		
 	};
 		
-	if(!Is_Expander_Present())
-	{	
+	if (Is_Expander_Present()) {
+	  LED_STEP_SendWordExpanded(dat);
+	} else {
 		LED_STEP_SendWord(dat & 0xFFFF);
 	}
-	else
-	{
-		//if expander is presented we should control 32 LEDs instead of 16
-		tmp1 = dat >> 24;
-		tmp2 = dat >> 16;
-		LED_STEP_STORAGE_LOW;
-		LED_STEP_SendByte((unsigned char) (tmp2) );
-		LED_STEP_SendByte((unsigned char) (tmp1) );
-		LED_STEP_SendByte((unsigned char) (dat >> 8) );
-		LED_STEP_SendByte((unsigned char) (dat) );
-		
-		LED_STEP_STORAGE_HIGH;
-		
-	}
 };
+
+void LED_STEP_SendWordExpanded(uint32_t dat) {
+  uint8_t tmp1 = dat >> 24;
+  uint8_t tmp2 = dat >> 16;
+  LED_STEP_STORAGE_LOW;
+  LED_STEP_SendByte((unsigned char) (tmp2) );
+  LED_STEP_SendByte((unsigned char) (tmp1) );
+  LED_STEP_SendByte((unsigned char) (dat >> 8) );
+  LED_STEP_SendByte((unsigned char) (dat) );
+
+  LED_STEP_STORAGE_HIGH;
+}
 

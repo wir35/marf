@@ -56,5 +56,7 @@ void UpdateModeSectionLeds();
 // Update step leds
 void UpdateStepSection();
 
+// Flash leds for clear
+void RunClearAnimation();
 
 #endif
