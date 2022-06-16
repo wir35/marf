@@ -10,13 +10,6 @@
 volatile uint8_t edit_mode_step_num = 0;
 volatile uint8_t edit_mode_section = 0;
 
-// Variable used for key lock during the VIEW_MODE key changes steps options
-volatile uint8_t key_locked = 0;
-volatile uint8_t keys_not_valid = 0;
-
-// Current patches bank
-volatile uint8_t bank = 1;
-
 // Start Timer 6 for clear switch measurement
 void InitClear_Timer() {
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM6, ENABLE);
@@ -31,21 +24,150 @@ void InitClear_Timer() {
   TIM_ITConfig(TIM6, TIM_IT_Update, ENABLE);
 };
 
+// Main Loop. Does not return.
 
-#define LONG_COUNTER_TICKS 60;
-#define SHORT_COUNTER_TICKS 3;
+void ControllerMainLoop() {
+  uButtons switches;
 
-void ControllerProcessSwitches(uButtons* key) {
+  // Stable switches state, post debouncing
+  volatile uint64_t stable_switches_state;
+
+  // Previous stable switches state
+  volatile uint64_t previous_switches_state;
+
+  // Raw new switches reading
+  volatile uint64_t new_switches_state;
+
+  // Time at which the switches were last scanned
+  uint32_t switch_last_read_time = 0;
+
+  // Down counter to debounce switches
+  uint16_t switch_debounce_counter = KEY_DEBOUNCE_COUNT;
+
+  // Initial read
+  stable_switches_state = previous_switches_state = GetButton();
+  switches.value = stable_switches_state;
+
+  // Main loop. Does not return.
+  while (1) {
+
+    // Compute continuous stage address
+    ComputeContinuousStep1();
+    ComputeContinuousStep2();
+
+    // Scan switches every 5ms
+    if (get_millis() - switch_last_read_time > KEY_TIMER) {
+      new_switches_state = GetButton(); // SLOOOOOOOOOOOW right here ..
+      switch_last_read_time = get_millis();
+      if (new_switches_state == stable_switches_state) {
+        // Nothing is happening
+        switch_debounce_counter = KEY_DEBOUNCE_COUNT;
+      } else {
+        // Switch state is changing
+        switch_debounce_counter -=1;
+      }
+
+      // Navigation switches have their own debouncing logic.
+      // Apply it every 5ms tick.
+      ControllerProcessNavigationSwitches(&switches);
+    }
+    if (!switch_debounce_counter) {
+      // Now switches are stable
+      switch_debounce_counter = KEY_DEBOUNCE_COUNT;
+      previous_switches_state = stable_switches_state;
+      stable_switches_state = new_switches_state;
+
+      switches.value = stable_switches_state;
+
+      // Apply switches that should only be applied after debounce
+      ControllerProcessStageAddressSwitches(&switches);
+
+      // Wait for long press on clear
+      if (!switches.b.ClearUp || !switches.b.ClearDown) InitClear_Timer();
+    }
+
+    // Step programming can be applied continuously to be more responsive,
+    // eg when the clock is running fast.
+    ControllerApplyProgrammingSwitches(&switches);
+
+    // Update panel state
+    // Shifting out to the Leds is kind of slow so only update the display when dirty flags are set.
+    if (display_update_flags.b.MainDisplay) {
+      UpdateModeSectionLeds();
+      display_update_flags.b.MainDisplay = 0;
+    };
+    if (display_update_flags.b.StepsDisplay) {
+      UpdateStepSection();
+      display_update_flags.b.StepsDisplay = 0;
+    };
+
+    // Process Stop and Start signals.
+    // Stop and start have their own debouncing/edge detection logic reading GPIO directly.
+    // This bypasses the controller and goes straight to afg.
+    ProcessStopStart(GPIO_ReadInputData(GPIOB));
+
+  }; // end main loop
+}
+
+void ControllerApplyProgrammingSwitches(uButtons * key) {
+  unsigned char step_num = 0, section = 0;
+
+  // Determine step num for different display modes
+  if (display_mode == DISPLAY_MODE_VIEW_1) {
+    step_num = afg1_step_num;
+    section = afg1_section;
+  } else if (display_mode == DISPLAY_MODE_VIEW_2) {
+    step_num = afg2_step_num;
+    section = afg2_section;
+  } else if (display_mode == DISPLAY_MODE_EDIT_1 || display_mode == DISPLAY_MODE_EDIT_2) {
+    step_num = edit_mode_step_num;
+    section = edit_mode_section;
+  };
+
+  // Apply programming from switches to active step
+  ApplyProgrammingSwitches(section, step_num, key);
+}
+
+void ControllerProcessStageAddressSwitches(uButtons * key) {
+
+  // Only do one of reset, strobe or advance
+  if (!key->b.StageAddress1Reset) {
+    DoReset1();
+  } else if (!key->b.StageAddress1PulseSelect) {
+    DoStrobe1();
+  } else if (!key->b.StageAddress1Advance) {
+    DoAdvance1();
+  }
+
+  if (!key->b.StageAddress2Reset) {
+    DoReset2();
+  } else if ( (!key->b.StageAddress2PulseSelect)) {
+    DoStrobe2();
+  } else if (!key->b.StageAddress2Advance) {
+    DoAdvance2();
+  };
+
+  if (!key->b.StageAddress1ContiniousSelect) {
+    EnableContinuousStageAddress1();
+  } else {
+    DisableContinuousStageAddress1();
+  }
+
+  if (!key->b.StageAddress2ContiniousSelect) {
+    EnableContinuousStageAddress2();
+  } else {
+    DisableContinuousStageAddress2();
+  }
+
+  display_update_flags.b.MainDisplay = 1;
+}
+
+void ControllerProcessNavigationSwitches(uButtons* key) {
   // Down counters which track the number of ticks of this method
   // before left and right switches should be processed again.
   // This enables some debouncing but also long press and hold to scroll.
   static uint16_t left_counter = SHORT_COUNTER_TICKS;
   static uint16_t right_counter = SHORT_COUNTER_TICKS;
-
-  if (!key->b.ClearUp || !key->b.ClearDown)  {
-    // Wait for long press on clear switch
-    InitClear_Timer();
-  }
 
   // Display/edit mode changes
   if (!key->b.StageAddress1Display && display_mode != DISPLAY_MODE_VIEW_1) {
@@ -58,12 +180,14 @@ void ControllerProcessSwitches(uButtons* key) {
     if (display_mode == DISPLAY_MODE_VIEW_1) {
       display_mode = DISPLAY_MODE_EDIT_1;
       edit_mode_section = afg1_section;
+      edit_mode_step_num = 0;
       right_counter = LONG_COUNTER_TICKS;
       left_counter = LONG_COUNTER_TICKS;
     }
     else if (display_mode == DISPLAY_MODE_VIEW_2) {
       display_mode = DISPLAY_MODE_EDIT_2;
       edit_mode_section = afg2_section;
+      edit_mode_step_num = 0;
       right_counter = LONG_COUNTER_TICKS;
       left_counter = LONG_COUNTER_TICKS;
     }
@@ -86,20 +210,16 @@ void ControllerProcessSwitches(uButtons* key) {
     }
   }
 
-  // Decrement and reset counters
-  if (!key->b.StepLeft) {
-    if (left_counter) left_counter--;
-  } else {
-    left_counter = SHORT_COUNTER_TICKS;
-  }
-  if (!key->b.StepRight) {
-    if (right_counter) right_counter--;
-  } else {
-    right_counter = SHORT_COUNTER_TICKS;
+  // Decrement counters
+  if (!key->b.StepLeft && left_counter) {
+    left_counter -= 1;
+  } else if (!key->b.StepRight && right_counter) {
+    right_counter -= 1;
   }
 
   // Left counter expired, do step left
   if (!left_counter) {
+    update_display();
     if (edit_mode_step_num == 0) {
       // Wrap around to max step
       edit_mode_step_num = get_max_step();
@@ -107,13 +227,13 @@ void ControllerProcessSwitches(uButtons* key) {
       // Decrement edit step
       edit_mode_step_num -= 1;
     }
-    // Long count when held down
+    // Reset counters. Long count when held down
     if (!key->b.StepLeft) left_counter = LONG_COUNTER_TICKS else left_counter = SHORT_COUNTER_TICKS;
-    update_display();
   }
 
   // Right counter expired, do step right
   if (!right_counter) {
+    update_display();
     if (edit_mode_step_num == get_max_step()) {
       // Wrap around to 0
       edit_mode_step_num = 0;
@@ -123,7 +243,6 @@ void ControllerProcessSwitches(uButtons* key) {
     }
     // Long count when held down
     if (!key->b.StepRight) right_counter = LONG_COUNTER_TICKS else right_counter = SHORT_COUNTER_TICKS;
-    update_display();
   }
 }
 

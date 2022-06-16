@@ -32,12 +32,10 @@ volatile uint8_t adc_pot_sel = 0;
 // Dip switch state
 volatile uDipConfig dip_config;
 
+// Clocks
+RCC_ClocksTypeDef RCC_Clocks;
+
 unsigned char revision; 
-
-#define KEY_DEBOUNCE_COUNT 3
-#define KEY_TIMER 5 // scan switches every 5ms
-
-uint16_t tick;
 
 // ADC interrupt handler
 void ADC_IRQHandler() {
@@ -494,73 +492,6 @@ void InternalDACInit(void)
   DAC_SetChannel2Data(DAC_Align_12b_R, 0);
 };
 
-// Implement most of the UI logic for switch changes.
-unsigned char ProcessSwitchesActivity(uButtons * key)
-{
-  unsigned char step_num = 0, section = 0;
-
-  // Determine step num for different display modes
-  if (display_mode == DISPLAY_MODE_VIEW_1) {
-    step_num = afg1_step_num;
-    section = afg1_section;
-  };
-  if (display_mode == DISPLAY_MODE_VIEW_2) {
-    step_num = afg2_step_num;
-    section = afg2_section;
-  };
-  if (display_mode == DISPLAY_MODE_EDIT_1 || DISPLAY_MODE_EDIT_2) {
-    step_num = edit_mode_step_num;
-    section = edit_mode_section;
-  };
-
-  // Apply programming from switches to active step
-  ApplyProgrammingSwitches(section, step_num, key);
-
-  // Apply clear, left, right, etc switches
-  ControllerProcessSwitches(key);
-
-  // Only do one of reset, strobe or advance
-  if (!key->b.StageAddress1Reset) {
-    DoReset1();
-  } else if (!key->b.StageAddress1PulseSelect) {
-    DoStrobe1();
-  } else if (!key->b.StageAddress1Advance) {
-    DoAdvance1();
-  }
-
-  if (!key->b.StageAddress2Reset) {
-    DoReset2();
-  } else if ( (!key->b.StageAddress2PulseSelect)) {
-    DoStrobe2();
-  } else if (!key->b.StageAddress2Advance) {
-    DoAdvance2();
-  };
-
-  if (!key->b.StageAddress1ContiniousSelect) {
-    EnableContinuousStageAddress1();
-    key_locked = 0;
-  } else {
-    DisableContinuousStageAddress1();
-    key_locked = 0;
-  }
-
-  if (!key->b.StageAddress2ContiniousSelect) {
-    EnableContinuousStageAddress2();
-    key_locked = 0;
-  } else {
-    DisableContinuousStageAddress2();
-    key_locked = 0;
-  }
-
-  if (keys_not_valid == 0) {
-    display_update_flags.b.MainDisplay = 1;
-  } else {
-    keys_not_valid = 0;
-  };
-
-  return 1;
-}
-
 void PermutePulses(void)
 {
   unsigned int i=0; 
@@ -607,7 +538,7 @@ void PermutePulses(void)
 
 
 void Calibration(void)
-{	//printf("%d \n ",__LINE__);
+{
   unsigned int i=0;
   uButtons myButtons;
   uLeds mLeds;
@@ -711,17 +642,12 @@ void Calibration(void)
 
 }
 
-RCC_ClocksTypeDef RCC_Clocks;
+// TODO(maxl0rd): still more init code can be factored out
 
 int main(void)
 {
   uButtons myButtons;
   uLeds mLeds;
-
-  volatile unsigned long long int key_state, prev_key_state, raw_key_state;
-  uint32_t key_timestamp=0;
-  uint16_t keys_debounce =0;
-  unsigned char keys_stable = 0;
 
   /* Reset update states */
   display_update_flags.value = 0x00;
@@ -765,8 +691,6 @@ int main(void)
 
   /* Switches input config */
   init_HC165();
-  key_state = GetButton();
-  prev_key_state = 0x7fbf67f7fffdff;//key_state;
 
   /* External DAC config */
   MAX5135init();
@@ -789,14 +713,13 @@ int main(void)
   revision = versionRevised();
 
   // Scan initial state
-  key_state = GetButton();
-  myButtons.value = key_state;
+  myButtons.value = GetButton();
 
   if(!myButtons.b.StageAddress1Advance) {
     // If advance 1 switch is pressed, enter calibration loop
     Calibration();
   }
-  else if (!myButtons.b.Pulse1Off && !myButtons.b.Pulse2Off) {
+  else if (!myButtons.b.Pulse1On || !myButtons.b.Pulse2On) {
     // Store that we need pulses switched
     PermutePulses();
   } else {
@@ -810,51 +733,6 @@ int main(void)
   // Set magic for voltage scaling from dip switch state
   SetVoltageRange(dip_config);
 
-  while (1) {
-    // Main loop
-
-    if ((uint16_t)(get_millis() - key_timestamp) > KEY_TIMER) {
-      // Time to scan the switches
-      raw_key_state = GetButton();
-      key_timestamp = get_millis();
-      if (raw_key_state == key_state) {
-        if (--keys_debounce == 0) {
-          keys_stable = 1; // switches stable now
-          keys_debounce = KEY_DEBOUNCE_COUNT;
-        }
-      } else {
-        keys_debounce = KEY_DEBOUNCE_COUNT;
-        key_state = raw_key_state;
-        keys_stable = 0; // nope bounce again
-      }
-      if (keys_stable) {
-        myButtons.value = key_state;
-        if (key_state != prev_key_state || myButtons.b.StepRight == 0 || myButtons.b.StepLeft == 0) {
-          tick = 0;
-          ProcessSwitchesActivity(&myButtons);
-          tick = 1;
-          prev_key_state = key_state;
-        }
-      }
-    };
-
-    // Update panel state
-    if (display_update_flags.b.MainDisplay) {
-      UpdateModeSectionLeds();
-      display_update_flags.b.MainDisplay = 0;
-    };
-    if (display_update_flags.b.StepsDisplay) {
-      UpdateStepSection();
-      display_update_flags.b.StepsDisplay = 0;
-    };
-
-    // Compute continuous stage address
-    ComputeContinuousStep1();
-    ComputeContinuousStep2();
-
-    // Process Stop and Start signals
-    ProcessStopStart(GPIO_ReadInputData(GPIOB));
-
-  }; // end main loop
+  ControllerMainLoop(); // does not return
 };
 

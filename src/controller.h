@@ -8,22 +8,19 @@
 extern volatile uint8_t edit_mode_step_num;
 extern volatile uint8_t edit_mode_section;
 
+#define KEY_DEBOUNCE_COUNT 3  // 3 bounces
+#define KEY_TIMER 5  // scan switches every 5ms
 
-// Variable used for key lock during the VIEW_MODE key changes steps options
-extern volatile uint8_t key_locked;
-extern volatile uint8_t keys_not_valid;
+#define LONG_COUNTER_TICKS 20;
+#define SHORT_COUNTER_TICKS 3;
 
-// Current patches bank
-volatile uint8_t bank;
+void ControllerMainLoop();
 
-uint16_t counterL;
-uint16_t counterR;
+void ControllerApplyProgrammingSwitches(uButtons * key);
 
-inline uint8_t get_edit_mode_step_num() {
-  return edit_mode_step_num + (edit_mode_section << 4);
-}
+void ControllerProcessStageAddressSwitches(uButtons * key);
 
-void ControllerProcessSwitches(uButtons* key);
+void ControllerProcessNavigationSwitches(uButtons* key);
 
 void ControllerCheckClear();
 
