@@ -5,10 +5,15 @@
 #include "afg.h"
 #include "leds_step.h"
 #include "expander.h"
+#include "adc_pots_selector.h"
+#include "MAX5135.h"
 
 // Step selected for editing (0-31)
 volatile uint8_t edit_mode_step_num = 0;
 volatile uint8_t edit_mode_section = 0;
+
+// Jobs
+volatile ControllerJobFlags controller_job_flags;
 
 // Start Timer 6 for clear switch measurement
 void InitClear_Timer() {
@@ -29,6 +34,11 @@ void InitClear_Timer() {
 void ControllerMainLoop() {
   uButtons switches;
 
+  controller_job_flags.adc_pot_sel = 0;
+  controller_job_flags.adc_mux_shift_out = 0;
+  controller_job_flags.afg1_tick = 0;
+  controller_job_flags.afg2_tick = 2;
+
   // Stable switches state, post debouncing
   volatile uint64_t stable_switches_state;
 
@@ -40,6 +50,9 @@ void ControllerMainLoop() {
 
   // Time at which the switches were last scanned
   uint32_t switch_last_read_time = 0;
+
+  // Time at which the display was updated
+  uint32_t leds_update_time = 0;
 
   // Down counter to debounce switches
   uint16_t switch_debounce_counter = KEY_DEBOUNCE_COUNT;
@@ -56,7 +69,7 @@ void ControllerMainLoop() {
     ComputeContinuousStep2();
 
     // Scan switches every 5ms
-    if (get_millis() - switch_last_read_time > KEY_TIMER) {
+    if (get_millis() - switch_last_read_time > 20) {
       new_switches_state = GetButton(); // SLOOOOOOOOOOOW right here ..
       switch_last_read_time = get_millis();
       if (new_switches_state == stable_switches_state) {
@@ -91,20 +104,53 @@ void ControllerMainLoop() {
     ControllerApplyProgrammingSwitches(&switches);
 
     // Update panel state
-    // Shifting out to the Leds is kind of slow so only update the display when dirty flags are set.
-    if (display_update_flags.b.MainDisplay) {
-      UpdateModeSectionLeds();
-      display_update_flags.b.MainDisplay = 0;
-    };
-    if (display_update_flags.b.StepsDisplay) {
-      UpdateStepSection();
-      display_update_flags.b.StepsDisplay = 0;
-    };
+    // Shifting out to the Leds is kind of slow so only update the display when dirty flags are set
+    // and rate limit the update to 10 Hz
+    if (get_millis() - leds_update_time > 100) {
+      if (display_update_flags.b.MainDisplay) {
+        UpdateModeSectionLeds();
+        display_update_flags.b.MainDisplay = 0;
+      };
+      if (display_update_flags.b.StepsDisplay) {
+        UpdateStepSection();
+        display_update_flags.b.StepsDisplay = 0;
+      };
+      leds_update_time = get_millis();
+    }
 
     // Process Stop and Start signals.
     // Stop and start have their own debouncing/edge detection logic reading GPIO directly.
     // This bypasses the controller and goes straight to afg.
     ProcessStopStart(GPIO_ReadInputData(GPIOB));
+
+    // Shift adc mux if time
+    if (controller_job_flags.adc_mux_shift_out) {
+      // Disable ADC interrupts during shift
+      // __disable_irq();
+      if (Is_Expander_Present()) {
+        // Increment the slider, including expander sliders
+        controller_job_flags.adc_pot_sel = ADC_inc_expanded(controller_job_flags.adc_pot_sel);
+      } else {
+        // Increments the slider
+        controller_job_flags.adc_pot_sel = ADC_inc(controller_job_flags.adc_pot_sel);
+      }
+      controller_job_flags.adc_mux_shift_out = 0;
+      // Reenable interrupts again
+      // __enable_irq();
+    }
+
+    if (controller_job_flags.afg1_tick) {
+      // Send data to external dac
+      MAX5135_DAC_send(MAX5135_DAC_CH_0, controller_job_flags.afg1_outputs.time);
+      MAX5135_DAC_send(MAX5135_DAC_CH_1, controller_job_flags.afg1_outputs.ref);
+      controller_job_flags.afg1_tick = 0;
+    }
+    if (controller_job_flags.afg2_tick) {
+      // Send data to external dac
+      MAX5135_DAC_send(MAX5135_DAC_CH_2, controller_job_flags.afg2_outputs.time);
+      MAX5135_DAC_send(MAX5135_DAC_CH_3, controller_job_flags.afg2_outputs.ref);
+      controller_job_flags.afg2_tick = 0;
+    }
 
   }; // end main loop
 }

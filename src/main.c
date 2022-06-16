@@ -25,8 +25,6 @@
 #include "display.h"
 #include "controller.h"
 
-volatile uint8_t adc_pot_sel = 0;
-
 #define SEQUENCER_DATA_SIZE (6*2*32)
 
 // Dip switch state
@@ -37,48 +35,65 @@ RCC_ClocksTypeDef RCC_Clocks;
 
 unsigned char revision; 
 
+inline FlagStatus ADC_GetFlagStatus_In(ADC_TypeDef* ADCx, uint8_t ADC_FLAG) {
+  FlagStatus bitstatus = RESET;
+
+  /* Check the status of the specified ADC flag */
+  if ((ADCx->SR & ADC_FLAG) != (uint8_t)RESET)
+  {
+    /* ADC_FLAG is set */
+    bitstatus = SET;
+  }
+  else
+  {
+    /* ADC_FLAG is reset */
+    bitstatus = RESET;
+  }
+  /* Return the ADC_FLAG status */
+  return  bitstatus;
+}
+
 // ADC interrupt handler
 void ADC_IRQHandler() {
-  uint8_t stage = 0;
+  volatile uint8_t stage = 0;
+  uint8_t adc1_eoc = ADC_GetFlagStatus_In(ADC1, ADC_FLAG_EOC) == SET;
+  uint8_t adc2_eoc = ADC_GetFlagStatus_In(ADC2, ADC_FLAG_EOC) == SET;
 
-  if (adc_pot_sel < 16 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+  if (controller_job_flags.adc_mux_shift_out) return;
+
+  if (controller_job_flags.adc_pot_sel < 16 && adc1_eoc) {
     // POT_TYPE_VOLTAGE EOC
-    stage = adc_pot_sel;
+    stage = controller_job_flags.adc_pot_sel;
     WriteVoltageSlider(stage, ADC1->DR);
+    controller_job_flags.adc_mux_shift_out = 1;
   }
-  else if (adc_pot_sel < 24 && ADC_GetFlagStatus(ADC2, ADC_FLAG_EOC) == SET) {
+  else if (controller_job_flags.adc_pot_sel < 24 && adc2_eoc) {
     // POT_TYPE_OTHER EOC
-    stage = adc_pot_sel - 16;
+    stage = controller_job_flags.adc_pot_sel - 16;
     WriteOtherCv(stage, ADC2->DR);
+    controller_job_flags.adc_mux_shift_out = 1;
   }
-  else if (adc_pot_sel < 40 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+  else if (controller_job_flags.adc_pot_sel < 40 && adc1_eoc) {
     // POT_TYPE_TIME EOC
-    stage = adc_pot_sel - 24;
+    stage = controller_job_flags.adc_pot_sel - 24;
     WriteTimeSlider(stage, ADC1->DR);
+    controller_job_flags.adc_mux_shift_out = 1;
   }
-  else if (adc_pot_sel < 56 && ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+  else if (controller_job_flags.adc_pot_sel < 56 && adc1_eoc) {
     // More POT_TYPE_VOLTAGE EOC
-    stage = adc_pot_sel - 24;
+    stage = controller_job_flags.adc_pot_sel - 24;
     WriteVoltageSlider(stage, ADC1->DR);
-  } else if (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == SET) {
+    controller_job_flags.adc_mux_shift_out = 1;
+  } else if (adc1_eoc) {
     // More POT_TYPE_TIME EOC
-    stage = adc_pot_sel - 40;
+    stage = controller_job_flags.adc_pot_sel - 40;
     WriteTimeSlider(stage, ADC1->DR);
+    controller_job_flags.adc_mux_shift_out = 1;
   }
 
-  if (Is_Expander_Present()) {
-    // Increment the slider, including expander sliders
-    adc_pot_sel = ADC_inc_expanded(adc_pot_sel);
-  } else {
-    // Increments the slider
-    adc_pot_sel = ADC_inc(adc_pot_sel);
-  }
-
-  // Reading ADCs done
+  // Clear flags
   ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
   ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
-
-  delay_us(10);
 }
 
 
@@ -97,9 +112,9 @@ void mADC_init(void)
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 
   TIM_TimeBaseStructInit(&TimeBaseInit);
-  TimeBaseInit.TIM_Prescaler 			= 1;
+  TimeBaseInit.TIM_Prescaler 			= 100;
   TimeBaseInit.TIM_CounterMode 		= TIM_CounterMode_Up;
-  TimeBaseInit.TIM_Period 				= 4200-1;// for 40kHz
+  TimeBaseInit.TIM_Period 				= 1680; // 10kHz
   TimeBaseInit.TIM_ClockDivision 	= TIM_CKD_DIV1;
   TIM_TimeBaseInit(TIM2, &TimeBaseInit); 
 
@@ -110,7 +125,7 @@ void mADC_init(void)
   TIM_Cmd(TIM2, ENABLE); 
 
   //ADC Init
-  NVIC_SetPriority (ADC_IRQn, 1);
+  NVIC_SetPriority (ADC_IRQn, 0);
 
   //ADC GPIO Init
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOA, ENABLE);
@@ -145,12 +160,11 @@ void mADC_init(void)
 
   //ADC interrupts init
   nvicStructure.NVIC_IRQChannel = ADC_IRQn;
-  nvicStructure.NVIC_IRQChannelPreemptionPriority = 1;
+  nvicStructure.NVIC_IRQChannelPreemptionPriority = 0;
   nvicStructure.NVIC_IRQChannelSubPriority = 0;
   nvicStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&nvicStructure);
 
-  adc_pot_sel = 0;
   ADC_POTS_selector_Ch(0);
 
   NVIC_EnableIRQ(ADC_IRQn);
@@ -257,10 +271,12 @@ void EXTI9_5_IRQHandler() {
 	Every interrupt of Timer 4 triggers new output voltages and a check if the step has ended.
  */
 void TIM4_IRQHandler() {
-  AfgTick1();
-
-  // Adjust timer prescaler for time multiplier
-  TIM4->PSC = STEP_TIMER_PRESCALER; // (uint16_t) (GetTimeMultiplier1() * STEP_TIMER_PRESCALER);
+  // Process one time window and return the programmed output levels
+  controller_job_flags.afg1_outputs = AfgTick1();
+  // Update internal dac (fast)
+  DAC_SetChannel1Data(DAC_Align_12b_R, controller_job_flags.afg1_outputs.voltage);
+  // Set flag to flush time and ref levels to external dac (slow)
+  controller_job_flags.afg1_tick = 1;
 
   // Clear interrupt flag for Timer 4
   TIM4->SR = (uint16_t) ~TIM_IT_Update;
@@ -271,10 +287,9 @@ void TIM4_IRQHandler() {
   Keep in sync with TIM4_IRQHandler().
  */
 void TIM5_IRQHandler() {
-  AfgTick2();
-
-  // Adjust timer prescaler for time multiplier
-  TIM5->PSC = STEP_TIMER_PRESCALER; // (uint16_t) (GetTimeMultiplier2() * STEP_TIMER_PRESCALER);
+  controller_job_flags.afg2_outputs = AfgTick2();
+  DAC_SetChannel2Data(DAC_Align_12b_R, controller_job_flags.afg2_outputs.voltage);
+  controller_job_flags.afg2_tick = 1;
 
   // Clear interrupt flag for Timer 5
   TIM5->SR = (uint16_t) ~TIM_IT_Update;
@@ -312,19 +327,19 @@ void mTimersInit(void)
   TIM_ITConfig(TIM5, TIM_IT_Update, ENABLE);
 
   nvicStructure.NVIC_IRQChannel = TIM4_IRQn;
-  nvicStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  nvicStructure.NVIC_IRQChannelSubPriority = 0;
+  nvicStructure.NVIC_IRQChannelPreemptionPriority = 1;
+  nvicStructure.NVIC_IRQChannelSubPriority = 1;
   nvicStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&nvicStructure);
 
   nvicStructure.NVIC_IRQChannel = TIM5_IRQn;
-  nvicStructure.NVIC_IRQChannelPreemptionPriority = 0;
-  nvicStructure.NVIC_IRQChannelSubPriority = 0;
+  nvicStructure.NVIC_IRQChannelPreemptionPriority = 1;
+  nvicStructure.NVIC_IRQChannelSubPriority = 1;
   nvicStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&nvicStructure);
 
-  NVIC_SetPriority (TIM4_IRQn, 0);
-  NVIC_SetPriority (TIM5_IRQn, 0);
+  NVIC_SetPriority (TIM4_IRQn, 1);
+  NVIC_SetPriority (TIM5_IRQn, 1);
 
   SCB->AIRCR = AIRCR_VECTKEY_MASK | NVIC_PriorityGroup_0;
 

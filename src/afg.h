@@ -26,6 +26,13 @@ extern volatile uint32_t afg1_step_cnt, afg2_step_cnt;
 #define MODE_STAY_HI_Z    5
 #define MODE_ADVANCE      6
 
+// Values of programmed output voltages
+typedef struct {
+  uint16_t voltage;
+  uint16_t time;
+  uint16_t ref;
+} ProgrammedOutputs;
+
 // Sequencer modes
 extern volatile unsigned char afg1_mode;
 extern volatile unsigned char afg2_mode;
@@ -136,10 +143,10 @@ inline void DoReset2() {
   }
 }
 
-// Tick
+// Process one time window
 
-void AfgTick1();
-void AfgTick2();
+ProgrammedOutputs AfgTick1();
+ProgrammedOutputs AfgTick2();
 
 // Compute continuous step stage selection
 
