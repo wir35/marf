@@ -181,15 +181,17 @@ void ControllerProcessNavigationSwitches(uButtons* key) {
       display_mode = DISPLAY_MODE_EDIT_1;
       edit_mode_section = afg1_section;
       edit_mode_step_num = 0;
-      right_counter = LONG_COUNTER_TICKS;
-      left_counter = LONG_COUNTER_TICKS;
+      right_counter = SCROLL_WAIT_COUNTER;
+      left_counter = SCROLL_WAIT_COUNTER;
+      update_display();
     }
     else if (display_mode == DISPLAY_MODE_VIEW_2) {
       display_mode = DISPLAY_MODE_EDIT_2;
       edit_mode_section = afg2_section;
       edit_mode_step_num = 0;
-      right_counter = LONG_COUNTER_TICKS;
-      left_counter = LONG_COUNTER_TICKS;
+      right_counter = SCROLL_WAIT_COUNTER;
+      left_counter = SCROLL_WAIT_COUNTER;
+      update_display();
     }
   }
 
@@ -198,23 +200,35 @@ void ControllerProcessNavigationSwitches(uButtons* key) {
     if (!key->b.StepLeft && !key->b.StageAddress1Display) {
       afg1_section = 0;
       display_mode = DISPLAY_MODE_VIEW_1;
+      update_display();
     } else if (!key->b.StepRight && !key->b.StageAddress1Display) {
       afg1_section = 1;
       display_mode = DISPLAY_MODE_VIEW_1;
+      update_display();
     } else if (!key->b.StepLeft && !key->b.StageAddress2Display) {
       afg2_section = 0;
       display_mode = DISPLAY_MODE_VIEW_2;
+      update_display();
     } else if (!key->b.StepRight && !key->b.StageAddress2Display) {
       afg2_section = 1;
       display_mode = DISPLAY_MODE_VIEW_2;
+      update_display();
     }
   }
 
   // Decrement counters
   if (!key->b.StepLeft && left_counter) {
+    // Long hold
     left_counter -= 1;
-  } else if (!key->b.StepRight && right_counter) {
+  } else if (key->b.StepLeft) {
+    // Release
+    left_counter = SHORT_COUNTER_TICKS;
+  }
+
+  if (!key->b.StepRight && right_counter) {
     right_counter -= 1;
+  } else if (key->b.StepRight) {
+    right_counter = SHORT_COUNTER_TICKS;
   }
 
   // Left counter expired, do step left
@@ -227,8 +241,8 @@ void ControllerProcessNavigationSwitches(uButtons* key) {
       // Decrement edit step
       edit_mode_step_num -= 1;
     }
-    // Reset counters. Long count when held down
-    if (!key->b.StepLeft) left_counter = LONG_COUNTER_TICKS else left_counter = SHORT_COUNTER_TICKS;
+    // Long count when held down
+    left_counter = LONG_COUNTER_TICKS;
   }
 
   // Right counter expired, do step right
@@ -242,7 +256,7 @@ void ControllerProcessNavigationSwitches(uButtons* key) {
       edit_mode_step_num += 1;
     }
     // Long count when held down
-    if (!key->b.StepRight) right_counter = LONG_COUNTER_TICKS else right_counter = SHORT_COUNTER_TICKS;
+    right_counter = LONG_COUNTER_TICKS;
   }
 }
 

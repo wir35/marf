@@ -11,8 +11,9 @@ extern volatile uint8_t edit_mode_section;
 #define KEY_DEBOUNCE_COUNT 3  // 3 bounces
 #define KEY_TIMER 5  // scan switches every 5ms
 
-#define LONG_COUNTER_TICKS 20;
-#define SHORT_COUNTER_TICKS 3;
+#define LONG_COUNTER_TICKS  20;
+#define SHORT_COUNTER_TICKS 10;
+#define SCROLL_WAIT_COUNTER 120;
 
 void ControllerMainLoop();
 

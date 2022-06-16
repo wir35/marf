@@ -553,7 +553,6 @@ void Calibration(void)
 
   while(myButtons.b.StageAddress2Advance)
   {
-    //printf("(myButtons %d \n ",__LINE__);
     //Run/Wait/Stop leds blinking
     i++;
     if(i < 2000)
