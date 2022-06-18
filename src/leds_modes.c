@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "leds_modes.h"
+#include "delays.h"
 
 #define LEDS_MODES_SHIFT_HIGH		GPIO_SetBits(GPIOC, GPIO_Pin_4)
 #define LEDS_MODES_SHIFT_LOW		GPIO_ResetBits(GPIOC, GPIO_Pin_4)
@@ -48,9 +49,9 @@ void LEDS_modes_SendByte(unsigned char data)
 		}
 		
 		LEDS_MODES_SHIFT_LOW;		
-		DELAY_NOPS();
+		DELAY_NOPS_120NS();
 		LEDS_MODES_SHIFT_HIGH;
-		DELAY_NOPS(); 
+		DELAY_NOPS_120NS(); 
 		dat = dat << 1;
 	}
 	LEDS_MODES_DATA_LOW;

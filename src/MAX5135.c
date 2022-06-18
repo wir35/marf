@@ -6,31 +6,37 @@
 
 #include "delays.h"
 
-void SendData(unsigned char mData)
-{
-	while(!SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_TXE)); 
-	SPI_I2S_SendData(SPI2, mData);
-	while(!SPI_I2S_GetFlagStatus(SPI2, SPI_I2S_FLAG_RXNE));
-	SPI_I2S_ReceiveData(SPI2);
-	;
-};
+// These library methods are too slow to call directly.
+// Inline streamlined versions of them here for performance.
 
-void MAX5135_SendPack(unsigned char _data1, unsigned char _data2)
-{
-	GPIO_ResetBits(GPIOB, GPIO_Pin_12);
-	
-	SendData(_data1);
-	SendData(_data2);
-	
-	;	
-	//delay_us(1);
-	
-	GPIO_SetBits(GPIOB, GPIO_Pin_12);
+inline static FlagStatus SPI_I2S_GetFlagStatus_Fast(SPI_TypeDef* SPIx, uint16_t SPI_I2S_FLAG) {
+  return ((SPIx->SR & SPI_I2S_FLAG) != (uint16_t) RESET) ? SET : RESET;
 }
 
-void MAX5135init(void)
-{
-	/* SPI2 setting up*/
+inline static void SPI_I2S_SendData_Fast(SPI_TypeDef* SPIx, uint16_t data) {
+  SPIx->DR = data;
+}
+
+inline static uint16_t SPI_I2S_ReceiveData_Fast(SPI_TypeDef* SPIx) {
+  return SPIx->DR;
+}
+
+inline static void MAX5135_SendPack(uint8_t byte1, uint8_t byte2) {
+  GPIOB->BSRRH = GPIO_Pin_12; // Set
+
+  while(!SPI_I2S_GetFlagStatus_Fast(SPI2, SPI_I2S_FLAG_TXE));
+  SPI_I2S_SendData_Fast(SPI2, byte1);
+  while(!SPI_I2S_GetFlagStatus_Fast(SPI2, SPI_I2S_FLAG_RXNE));
+  SPI_I2S_ReceiveData_Fast(SPI2);
+  while(!SPI_I2S_GetFlagStatus_Fast(SPI2, SPI_I2S_FLAG_TXE));
+  SPI_I2S_SendData(SPI2, byte2);
+  while(!SPI_I2S_GetFlagStatus_Fast(SPI2, SPI_I2S_FLAG_RXNE));
+  SPI_I2S_ReceiveData_Fast(SPI2);
+
+  GPIOB->BSRRL = GPIO_Pin_12; // Reset
+}
+
+void MAX5135_Initialize(void) {
 	
 	GPIO_InitTypeDef mGPIO_InitStructure;
 	SPI_InitTypeDef mSPI;
@@ -54,9 +60,7 @@ void MAX5135init(void)
 	mGPIO_InitStructure.GPIO_PuPd 	= GPIO_PuPd_UP;
 	mGPIO_InitStructure.GPIO_Speed 	= GPIO_Speed_50MHz;
 	GPIO_Init(GPIOB, &mGPIO_InitStructure);
-	
-	//GPIO_SetBits(GPIOB, GPIO_Pin_0);
-	
+
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI2, ENABLE);
 	
 	SPI_I2S_DeInit(SPI2);
@@ -74,55 +78,30 @@ void MAX5135init(void)
 	SPI_Init(SPI2, &mSPI);
 	SPI_Cmd(SPI2, ENABLE);
 	SPI_NSSInternalSoftwareConfig(SPI2, SPI_NSSInternalSoft_Set);
-	
-	//Rpowerdown not used
-	//MAX5135_SendPack(MAX5135_CMD_PWR_CONTROL, MAX5135_DATA_NONE, MAX5135_DATA_NONE/*MAX5135_READY_PIN*/);
-
-	//Reset MAX5135
-	//MAX5135_SendPack(MAX5135_CMD_SOFTWARE_CLEAR, MAX5135_DATA_NONE, MAX5135_DATA_NONE);
-
-	//Linearity calibration
-	//MAX5135_SendPack(MAX5135_CMD_LINEARITY, MAX5135_LINEARITY_BIT, MAX5135_DATA_NONE);
-	//Waiting stabilization
-	//delay_ms(10);
-	////Clr linearity bit
-	//MAX5135_SendPack(MAX5135_CMD_LINEARITY, MAX5135_DATA_NONE, MAX5135_DATA_NONE);
-	
-	//init END
 }
 
 
-void MAX5135_DAC_send(unsigned char DAC_Ch, unsigned int DAC_val)
-{
-	uint8_t msb = 0,lsb = 0;
-	if(DAC_val > 1023) DAC_val = 1023;
+void MAX5135_DAC_send(uint8_t channel, uint16_t val) {
+	uint8_t msb = 0, lsb = 0;
 	
-	switch(DAC_Ch)
-	{
+	val &= 0x03FF;
+	switch(channel) {
 		case 0:
-		{
-			msb = 0x30 | ((DAC_val >> 6) & 0x0F);
-			lsb = (DAC_val << 2) & 0xFC;
+			msb = 0x30 | ((val >> 6) & 0x0F);
+			lsb = (val << 2) & 0xFC;
 			break;
-		}
 		case 1:
-		{
-			msb = 0x70 | ((DAC_val >> 6) & 0x0F);
-			lsb = (DAC_val << 2) & 0xFC;
+			msb = 0x70 | ((val >> 6) & 0x0F);
+			lsb = (val << 2) & 0xFC;
 			break;
-		}
 		case 2:
-		{
-			msb = 0xB0 | ((DAC_val >> 6) & 0x0F);
-			lsb = (DAC_val << 2) & 0xFC;
+			msb = 0xB0 | ((val >> 6) & 0x0F);
+			lsb = (val << 2) & 0xFC;
 			break;
-		}
 		case 3:
-		{
-			msb = 0xF0 | ((DAC_val >> 6) & 0x0F);
-			lsb = (DAC_val << 2) & 0xFC;
+			msb = 0xF0 | ((val >> 6) & 0x0F);
+			lsb = (val << 2) & 0xFC;
 			break;
-		}
 	}
 	MAX5135_SendPack(msb, lsb);
 }

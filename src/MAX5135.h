@@ -1,6 +1,8 @@
 #ifndef __MAX5135_H
 #define __MAX5135_H
 
+#include <stdint.h>
+
 ////  Frame format for DAC exchange
 ////  C7 C6 C5 C4 C3 C2 C1 C0    D15 D14 D13 ...... D5 D4 D3 D2 D0
 ////  -----------------------    ---------------------------------
@@ -10,7 +12,7 @@
 //// CS PIN used (CS connected to READY pin in chain)
 //// SPI module used for communication
 
-// CMD byte
+// CMD bytes
 #define MAX5135_CMD_NONE						0x00
 #define MAX5135_CMD_LDAC						0x01
 #define MAX5135_CMD_SOFTWARE_CLEAR	0x02
@@ -29,15 +31,11 @@
 #define MAX5135_DAC_CH_2						0x02
 #define MAX5135_DAC_CH_3						0x03
 
-
 #define MAX5135_DATA_NONE						0x00
 
+void MAX5135_Initialize(void);
 
-void SendData(unsigned char mData);
-
-void MAX5135init(void);
-
-void MAX5135_DAC_send(unsigned char DAC_Ch, unsigned int DAC_val);
+void MAX5135_DAC_send(uint8_t DAC_Ch, uint16_t DAC_val);
 
 #endif
 

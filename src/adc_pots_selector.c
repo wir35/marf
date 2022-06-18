@@ -19,10 +19,11 @@
 #define ADC_POTS_SELECTOR_DATA_HIGH			GPIOC->BSRRL = ADC_PS_DS_PIN
 #define ADC_POTS_SELECTOR_DATA_LOW			GPIOC->BSRRH = ADC_PS_DS_PIN
 
-#define DELAY 2
+// Data for ADC channels selection
+// No longer used, but a useful reference.
 
-//Masks for adc channels selection
-unsigned long long int ChSelData[72] = {
+#if 0
+const uint64_t adc_mux_channel_select_data[72] = {
 	0xFFFFFFF0, //Time1 CH
 	0xFFFFFFF1, //Time2 CH
 	0xFFFFFFF2, //Time3 CH
@@ -47,6 +48,7 @@ unsigned long long int ChSelData[72] = {
 	0xFFFFF5F5, //TIME MULT 2
 	0xFFFFF6F6, //EXT STAGE 1
 	0xFFFFF7F7, //EXT STAGE 2
+	// Both are technically correct since the last byte is irrelevant to that mux
 	/* 0xFFFFF0FF, //EXT INPUT A */
 	/* 0xFFFFF1FF, //EXT INPUT B */
 	/* 0xFFFFF2FF, //EXT INPUT C */
@@ -106,16 +108,69 @@ unsigned long long int ChSelData[72] = {
 	
 	//0xFFFFFFFF	//ALL CHANNELS OFF
 };
+#endif
 
 
-//Init GPIOs for ADC channels multiplexers
-void ADC_POTS_selector_init(void)
+// Send one byte to the shift registers that drive the ADC multiplexers
+inline static void adc_mux_send_byte(const uint8_t data) {
+  uint8_t dat = data;
+
+  for (uint8_t cnt = 0; cnt < 8; cnt++) {
+    if ((dat & 0x80) > 0) {
+      ADC_POTS_SELECTOR_DATA_HIGH;
+    } else {
+      ADC_POTS_SELECTOR_DATA_LOW;
+    }
+    ADC_POTS_SELECTOR_SHIFT_LOW;
+    DELAY_NOPS_120NS();
+    ADC_POTS_SELECTOR_SHIFT_HIGH;
+    DELAY_NOPS_120NS();
+    dat = dat << 1;
+  }
+  ADC_POTS_SELECTOR_DATA_LOW;
+}
+
+// Send one half byte to the shift registers that drive the ADC multiplexers
+inline static void adc_mux_send_nibble(const uint8_t data) {
+  uint8_t dat = data;
+
+  for(uint8_t cnt = 0; cnt < 4; cnt++) {
+    if ((dat & 0x8) > 0) {
+      ADC_POTS_SELECTOR_DATA_HIGH;
+    } else {
+      ADC_POTS_SELECTOR_DATA_LOW;
+    }
+    ADC_POTS_SELECTOR_SHIFT_LOW;
+    DELAY_NOPS_120NS();
+    ADC_POTS_SELECTOR_SHIFT_HIGH;
+    DELAY_NOPS_120NS();
+    dat = dat << 1;
+  }
+  ADC_POTS_SELECTOR_DATA_LOW;
+}
+
+// Send five bytes to the shift registers that drive the ADC multiplexers.
+// This updates all five shift registers in an expanded module.
+inline static void adc_mux_send_word(const unsigned long long int data) {
+  ADC_POTS_SELECTOR_STORAGE_LOW;
+  adc_mux_send_byte((uint8_t) ((data&0xFF00000000) >>32));
+  adc_mux_send_byte((uint8_t) ((data&0x00FF000000) >>24));
+  adc_mux_send_byte((uint8_t) ( data&0x00000000FF));
+  adc_mux_send_byte((uint8_t) ((data&0x000000FF00) >>8));
+  adc_mux_send_byte((uint8_t) ((data&0x0000FF0000) >>16));
+  ADC_POTS_SELECTOR_STORAGE_HIGH;
+}
+
+void AdcMuxResetAllOff() {
+  adc_mux_send_word(0xFFFFFFFF);
+}
+
+// Init GPIOs for ADC channels multiplexers
+void AdcMuxGpioInitialize(void)
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
-	/* Setting up peripherial */
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
-	
 	memset(&GPIO_InitStructure, 0, sizeof(GPIO_InitStructure));
 	GPIO_InitStructure.GPIO_Pin 	= ADC_PS_SH_PIN|ADC_PS_ST_PIN|ADC_PS_DS_PIN;
 	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
@@ -125,159 +180,90 @@ void ADC_POTS_selector_init(void)
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
 }
 
-//Send one byte to ADC channels multiplexers
-void ADC_POTS_selector_SendByte(unsigned char data)
-{
-	unsigned char dat, cnt;
-	
-	dat = data;
-	for(cnt=0; cnt<8; cnt++)
-	{
-		if ((dat & 0x80) > 0) {
-			ADC_POTS_SELECTOR_DATA_HIGH;
-		} else {
-			ADC_POTS_SELECTOR_DATA_LOW;
-		}
-		/* DELAY_NOPS(); // data setup to serial clock time, 100ns target */
-		/* ADC_POTS_SELECTOR_SHIFT_LOW; */
-		/* DELAY_NOPS();  // serial clock pulse should be 80ns */
-		/* ADC_POTS_SELECTOR_SHIFT_HIGH; */
-		ADC_POTS_SELECTOR_SHIFT_LOW;
-		DELAY_NOPS();
-		ADC_POTS_SELECTOR_SHIFT_HIGH;
-		DELAY_NOPS(); 
-		dat = dat << 1;
-	}
-	
-	ADC_POTS_SELECTOR_DATA_LOW;
-}
+// Select next ADC channel and return its index. For unexpanded modules.
+// Muxes are addressed by three shift registers in series as follows:
+//   1. time sliders aka pots 24-39
+//   2. (first half) external voltages aka pots 16-23
+//   2. (unused half a shift register)
+//   3. voltage sliders  aka pots 0 - 15
 
-void ADC_POTS_selector_SendHalfByte(unsigned char data)
-{
-  	unsigned char dat, cnt;
-	
-	dat = data;
-	for(cnt=0; cnt<4; cnt++)
-	{
-		if ((dat & 0x8) > 0) {
-			ADC_POTS_SELECTOR_DATA_HIGH;
-		} else {
-			ADC_POTS_SELECTOR_DATA_LOW;
-		}
-		/* DELAY_CLOCK(); // data setup to serial clock time, 100ns target */
-		/* ADC_POTS_SELECTOR_SHIFT_LOW; */
-		/* DELAY_CLOCK();  // serial clock pulse should be 80ns */
-		/* ADC_POTS_SELECTOR_SHIFT_HIGH; */
-		ADC_POTS_SELECTOR_SHIFT_LOW;
-		DELAY_NOPS(); // clock pulse width 120ns or so; also gives long enough for data to settle
-		ADC_POTS_SELECTOR_SHIFT_HIGH;
-		DELAY_NOPS(); 
-		dat = dat << 1;
-	}
-	
-		ADC_POTS_SELECTOR_DATA_LOW;
+uint8_t AdcMuxAdvance(uint8_t pot) {
+  uint8_t next_pot, channel;
 
-}
+  // Here is a fancy hack.
+  // The lowest three bits of the pot number (0-7) tell which channels of the mux (A,B,C) are live
+  channel = pot & 0x7;
 
-//Send 5 bytes to ADC channels multiplexers
-void ADC_POTS_selector_SendDWord(unsigned long long int data)
-{	
-  ADC_POTS_SELECTOR_STORAGE_LOW; 
-  ADC_POTS_selector_SendByte((unsigned char) ((data&0xFF00000000)>>32));
-  ADC_POTS_selector_SendByte((unsigned char) ((data&0xFF000000)>>24));
-  ADC_POTS_selector_SendByte((unsigned char) ( data&0x000000FF));
-  ADC_POTS_selector_SendByte((unsigned char) ((data&0x0000FF00)>>8));
-  ADC_POTS_selector_SendByte((unsigned char) ((data&0x00FF0000)>>16));
-  
-	
-  //	ADC_POTS_SELECTOR_STORAGE_LOW;
-  //	DELAY_CLOCK();  
-  ADC_POTS_SELECTOR_STORAGE_HIGH; // sendbyte had enough delay at the end
-}
-
-//Select ADC channel
-void ADC_POTS_selector_Ch(unsigned char Ch)
-{
-	ADC_POTS_selector_SendDWord((unsigned long long int) ChSelData[Ch]);
-}
-
-//Select next ADC channel and tell which it is 
-unsigned char ADC_inc(unsigned char pot)
-{
   ADC_POTS_SELECTOR_STORAGE_LOW;
-  /* Muxes are addressed by three shift registers in series as follows: */
-  /*   1. time sliders aka pots 24-39 */
-  /*   2. (first half) external voltages aka pots 16-23 */
-  /*   2. (unused half a shift register) */
-  /*   3. voltage sliders  aka pots 0 - 15 */
-  unsigned char _pot, channel;
-  channel = pot & 0x7; // last three bits of the pot number tell which channel of the mux is live
-  if (pot >= 8 && pot < 16) {// we're on the final mux
-    channel = (channel + 1) & 0x7;    // increment the channel and wrap
-    ADC_POTS_selector_SendHalfByte(channel);
-    _pot = 24+channel;  // time slider 1-8 are pots 24 - 31. 
+
+  // Here is an even fancier hack. This addressing scheme requires shifting at most 1 byte every change, rather than 3.
+  if (pot >= 8 && pot < 16) {
+    // On the final set of time sliders
+    channel = (channel + 1) & 0x7;   // increment the channel and wrap
+    adc_mux_send_nibble(channel);    //
+    next_pot = 24 + channel;         // time slider 1-8 are pots 24 - 31.
   }
-  else if (pot >=16 && pot < 24) { // we're on the external mux, need to shift twice to get to the voltage slider
-    ADC_POTS_selector_SendByte(0xFF);
-    _pot = channel; // voltage sliders are pots 0-7
+  else if (pot >=16 && pot < 24) {
+    // We're on the external mux
+    adc_mux_send_byte(0xFF);        // Need to shift twice to get to the voltage slider
+    next_pot = channel;             // voltage sliders are pots 0-7
   }
   else {
-    ADC_POTS_selector_SendHalfByte(0xF); // just shift to next mux
-    if (pot >= 32 && pot < 40) // final time sliders, external voltages are next
-      {
-	_pot = pot - 16; 
-      }
-    else {
-      _pot = pot + 8; // otherwise shift just moves pot count along by 8
+    adc_mux_send_nibble(0xF);       // just shift to next mux
+    if (pot >= 32 && pot < 40) {
+      // Final time sliders, external voltages are next
+      next_pot = pot - 16;
+    } else {
+      next_pot = pot + 8;           // shift just moves pot count along by 8
     }
   }
-  /* // activate the shift register with the new data */
-  /* ADC_POTS_SELECTOR_STORAGE_LOW; */
-  ADC_POTS_SELECTOR_STORAGE_HIGH;// think the sendbyte and sendhalfbyte have enough delay at the end
-  DELAY_NOPS(); 
-  // tell the main interrupt which pot we're on now
-  return _pot; 
+  // Activate the shift registers with the new data
+  ADC_POTS_SELECTOR_STORAGE_HIGH;
+  DELAY_NOPS_120NS();
+  return next_pot;
 }
 
-unsigned char ADC_inc_expanded(unsigned char pot)
-{
-  /* Hypothesis: Muxes are addressed by five shift registers in series as follows: */
-  /*   1. time sliders aka pots 24-39 */
-  /*   2. (first half) external voltages aka pots 16-23 */
-  /*   2. (unused half a shift register) */
-  /*   3. voltage sliders  aka pots 0 - 15 */
-  /*   4. expander voltage sliders aka pots 40 - 55 */
-  /*   5. expander time sliders aka pots 56 - 71 */
-  unsigned char _pot, channel;
-  channel = pot & 0x7; // last three bits of the pot number tell which channel of the mux is live
-  if (pot >= 64 && pot < 72) {// we're on the final mux
-    channel = (channel + 1) & 0x7;    // increment the channel and wrap
-    ADC_POTS_selector_SendHalfByte(channel);
-    _pot = 24+channel;  // time slider 1-8 are pots 24 - 31. 
+// Select next ADC channel and return its index. For expanded modules.
+// The logic is the same as above with an additional two more registers.
+// Muxes are addressed by five shift registers in series as follows:
+//   1. time sliders aka pots 24-39
+//   2. (first half) external voltages aka pots 16-23
+//   2. (unused half a shift register)
+//   3. voltage sliders  aka pots 0 - 15
+//   4. expander voltage sliders aka pots 40 - 55
+//   5. expander time sliders aka pots 56 - 71
+
+uint8_t AdcMuxAdvanceExpanded(uint8_t pot) {
+  uint8_t next_pot, channel;
+
+  channel = pot & 0x7;
+  if (pot >= 64 && pot < 72) {
+    // Final register
+    channel = (channel + 1) & 0x7;
+    adc_mux_send_nibble(channel);
+    next_pot = 24 + channel;  // time slider 1-8 are pots 24 - 31.
   }
-  else if (pot >=16 && pot < 24) { // we're on the external mux, need to shift twice to get to the voltage slider
-    ADC_POTS_selector_SendByte(0xFF);
-    _pot = channel; // voltage sliders are pots 0-7
+  else if (pot >=16 && pot < 24) {
+    // Second (external) register
+    adc_mux_send_byte(0xFF);
+    next_pot = 0 + channel; // voltage sliders are pots 0-7
   }
   else {
-    ADC_POTS_selector_SendHalfByte(0xF); // just shift to next mux
-    if (pot >= 32 && pot < 40) // final time sliders, external voltages are next
-      {
-	_pot = pot - 16; 
-      }
-    else if (pot >=8 && pot < 16) { // from mux 3 to mux 4
-      _pot = pot + 32; 
+    adc_mux_send_nibble(0xF); // just shift to next mux
+    if (pot >= 32 && pot < 40) {
+      // final time sliders, external voltages are next
+      next_pot = pot - 16;
+    } else if (pot >=8 && pot < 16) {
+      // from mux 3 to mux 4
+      next_pot = pot + 32; 
+    } else  {
+      next_pot = pot + 8; // otherwise shift 8
     }
-    else 
-      {
-      _pot = pot + 8; // otherwise shift just moves pot count along by 8
-      }
   }
   // activate the shift register with the new data
   ADC_POTS_SELECTOR_STORAGE_LOW;
-  DELAY_CLOCK_20();  // serial clock pulse should be 80ns
+  DELAY_CLOCK_20();  // Slightly longer settling time
   ADC_POTS_SELECTOR_STORAGE_HIGH;
-  // tell the main interrupt which pot we're on now
-  return _pot; 
+  return next_pot; 
 }
 

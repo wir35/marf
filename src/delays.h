@@ -3,7 +3,7 @@
 
 #include <stm32f4xx.h>
 
-#define DELAY_NOPS() ({asm("nop"); asm("nop");asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop");})
+#define DELAY_NOPS_120NS() ({asm("nop"); asm("nop");asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop"); asm("nop");})
 
 #define DELAY_CLOCK_10() ({ for (uint32_t d = 10; d != 0; d--) { asm("nop");} })
 #define DELAY_CLOCK_20() ({ for (uint32_t d = 20; d != 0; d--) { asm("nop");} })

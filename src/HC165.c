@@ -66,28 +66,28 @@ void HC165_LatchUp(void)
 	CLK_LOW;
 	SS_LOW;
 	//	delay_us(1);
-	 DELAY_NOPS(); 
+	 DELAY_NOPS_120NS(); 
 	SS_HIGH;
-	DELAY_NOPS(); 
+	DELAY_NOPS_120NS(); 
 }
 
 
 unsigned char HC165_GetByte(void)
 {
 	unsigned char data = 0x00, cnt = 0;	
-	DELAY_NOPS(); 
+	DELAY_NOPS_120NS(); 
 	if (  GPIO_ReadInputDataBit(GPIOC, SW_DAT) == 1 ) {
 		data = data | (0x01);
 	};
 
 	CLK_HIGH;	
-	DELAY_NOPS();
+	DELAY_NOPS_120NS();
 
 	for(cnt=0; cnt<7;cnt++)
 	{
 	  CLK_LOW;
 	  //		delay_us(1);
-	  DELAY_NOPS(); 
+	  DELAY_NOPS_120NS(); 
 
 		data = data << 1;		
 		if (  GPIO_ReadInputDataBit(GPIOC, SW_DAT) == 1 ) {
@@ -95,11 +95,11 @@ unsigned char HC165_GetByte(void)
 		};
 		CLK_HIGH;		
 		//	 delay_us(1);
-		 DELAY_NOPS(); 
+		 DELAY_NOPS_120NS(); 
 	}
 
 	CLK_LOW;
-	DELAY_NOPS(); 
+	DELAY_NOPS_120NS(); 
 	return data;
 }
 

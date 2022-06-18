@@ -165,7 +165,7 @@ void mADC_init(void)
   nvicStructure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&nvicStructure);
 
-  ADC_POTS_selector_Ch(0);
+  AdcMuxResetAllOff();
 
   NVIC_EnableIRQ(ADC_IRQn);
   ADC_ITConfig(ADC1, ADC_IT_EOC, ENABLE);
@@ -711,11 +711,11 @@ int main(void)
   init_HC165();
 
   /* External DAC config */
-  MAX5135init();
+  MAX5135_Initialize();
 
   /* ADC configuration */
-  ADC_POTS_selector_init();
-  ADC_POTS_selector_Ch(0);
+  AdcMuxGpioInitialize();
+  AdcMuxResetAllOff();
   mADC_init();
 
   mTimersInit();

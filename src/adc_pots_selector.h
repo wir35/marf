@@ -1,13 +1,14 @@
-#ifndef ADC_POTS_SELECTOR_H_
-#define ADC_POTS_SELECTOR_H_
+#ifndef __ADC_POTS_SELECTOR_H_
+#define __ADC_POTS_SELECTOR_H_
 
-void ADC_POTS_selector_init(void);
-void ADC_POTS_selector_SendByte(unsigned char data);
-void ADC_POTS_selector_SendHalfByte(unsigned char data);
-void ADC_POTS_selector_SendDWord(unsigned long long int data);
-void ADC_POTS_selector_Ch(unsigned char Ch);
-unsigned char ADC_inc(unsigned char pot);
-unsigned char ADC_inc_expanded(unsigned char pot); 
-extern void delay_us(unsigned int us);
-extern void delay_ns(unsigned int ns);
-#endif /* ADC_POTS_SELECTOR_H_ */
+#include <stdint.h>
+
+void AdcMuxGpioInitialize(void);
+
+void AdcMuxResetAllOff(void);
+
+// Advances the mux to the next pot and returns its index
+uint8_t AdcMuxAdvance(uint8_t pot);
+uint8_t AdcMuxAdvanceExpanded(uint8_t pot);
+
+#endif

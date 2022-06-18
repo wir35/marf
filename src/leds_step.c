@@ -14,7 +14,7 @@
 #define LED_STEP_DATA_HIGH			GPIO_SetBits(GPIOC, GPIO_Pin_8)
 #define LED_STEP_DATA_LOW				GPIO_ResetBits(GPIOC, GPIO_Pin_8)
 
-/*Init GPIO for LEDs control via HC595 shift registers*/
+/* Init GPIO for LEDs control via HC595 shift registers */
 void LED_STEP_init(void)
 {
 	GPIO_InitTypeDef GPIO_InitStructure;
@@ -43,9 +43,9 @@ void LED_STEP_SendByte(unsigned char data)
 		}
 
 		LED_STEP_SHIFT_LOW;
-		DELAY_NOPS(); 
+		DELAY_NOPS_120NS(); 
 		LED_STEP_SHIFT_HIGH;
-		DELAY_NOPS(); 
+		DELAY_NOPS_120NS(); 
 		dat = dat << 1;
 	}
 	LED_STEP_DATA_LOW;

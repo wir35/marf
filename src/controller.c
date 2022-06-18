@@ -136,10 +136,10 @@ void ControllerMainLoop() {
       controller_job_flags.inhibit_adc = 1;
       if (Is_Expander_Present()) {
         // Increment the slider, including expander sliders
-        controller_job_flags.adc_pot_sel = ADC_inc_expanded(controller_job_flags.adc_pot_sel);
+        controller_job_flags.adc_pot_sel = AdcMuxAdvanceExpanded(controller_job_flags.adc_pot_sel);
       } else {
         // Increments the slider
-        controller_job_flags.adc_pot_sel = ADC_inc(controller_job_flags.adc_pot_sel);
+        controller_job_flags.adc_pot_sel = AdcMuxAdvance(controller_job_flags.adc_pot_sel);
       }
       controller_job_flags.adc_mux_shift_out = 0;
       // Wait for settle
