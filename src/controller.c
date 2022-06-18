@@ -7,6 +7,7 @@
 #include "expander.h"
 #include "adc_pots_selector.h"
 #include "MAX5135.h"
+#include "delays.h"
 
 // Step selected for editing (0-31)
 volatile uint8_t edit_mode_step_num = 0;
@@ -36,6 +37,7 @@ void ControllerMainLoop() {
 
   controller_job_flags.adc_pot_sel = 0;
   controller_job_flags.adc_mux_shift_out = 0;
+  controller_job_flags.inhibit_adc = 0;
   controller_job_flags.afg1_tick = 0;
   controller_job_flags.afg2_tick = 2;
 
@@ -68,8 +70,12 @@ void ControllerMainLoop() {
     ComputeContinuousStep1();
     ComputeContinuousStep2();
 
+    // Expensive to recalculate every tick, so do it here
+    afg1_step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());;
+    afg2_step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());;
+
     // Scan switches every 5ms
-    if (get_millis() - switch_last_read_time > 20) {
+    if (get_millis() - switch_last_read_time > 5) {
       new_switches_state = GetButton(); // SLOOOOOOOOOOOW right here ..
       switch_last_read_time = get_millis();
       if (new_switches_state == stable_switches_state) {
@@ -104,17 +110,18 @@ void ControllerMainLoop() {
     ControllerApplyProgrammingSwitches(&switches);
 
     // Update panel state
+    if (display_update_flags.b.MainDisplay) {
+      UpdateModeSectionLeds();
+      display_update_flags.b.MainDisplay = 0;
+    };
+    if (display_update_flags.b.StepsDisplay) {
+      UpdateStepSectionLeds();
+      display_update_flags.b.StepsDisplay = 0;
+    };
     // Shifting out to the Leds is kind of slow so only update the display when dirty flags are set
-    // and rate limit the update to 10 Hz
-    if (get_millis() - leds_update_time > 100) {
-      if (display_update_flags.b.MainDisplay) {
-        UpdateModeSectionLeds();
-        display_update_flags.b.MainDisplay = 0;
-      };
-      if (display_update_flags.b.StepsDisplay) {
-        UpdateStepSection();
-        display_update_flags.b.StepsDisplay = 0;
-      };
+    // and rate limit the update to 50 Hz
+    if (get_millis() - leds_update_time > 20) {
+      FlushLedUpdates();
       leds_update_time = get_millis();
     }
 
@@ -125,8 +132,8 @@ void ControllerMainLoop() {
 
     // Shift adc mux if time
     if (controller_job_flags.adc_mux_shift_out) {
-      // Disable ADC interrupts during shift
-      // __disable_irq();
+      // Disable conversion during shift
+      controller_job_flags.inhibit_adc = 1;
       if (Is_Expander_Present()) {
         // Increment the slider, including expander sliders
         controller_job_flags.adc_pot_sel = ADC_inc_expanded(controller_job_flags.adc_pot_sel);
@@ -135,8 +142,10 @@ void ControllerMainLoop() {
         controller_job_flags.adc_pot_sel = ADC_inc(controller_job_flags.adc_pot_sel);
       }
       controller_job_flags.adc_mux_shift_out = 0;
-      // Reenable interrupts again
-      // __enable_irq();
+      // Wait for settle
+      delay_us(10);
+      // Reenable conversion again
+      controller_job_flags.inhibit_adc = 0;
     }
 
     if (controller_job_flags.afg1_tick) {
@@ -179,18 +188,24 @@ void ControllerProcessStageAddressSwitches(uButtons * key) {
   // Only do one of reset, strobe or advance
   if (!key->b.StageAddress1Reset) {
     DoReset1();
+    update_display();
   } else if (!key->b.StageAddress1PulseSelect) {
     DoStrobe1();
+    update_display();
   } else if (!key->b.StageAddress1Advance) {
     DoAdvance1();
+    update_display();
   }
 
   if (!key->b.StageAddress2Reset) {
     DoReset2();
+    update_display();
   } else if ( (!key->b.StageAddress2PulseSelect)) {
     DoStrobe2();
+    update_display();
   } else if (!key->b.StageAddress2Advance) {
     DoAdvance2();
+    update_display();
   };
 
   if (!key->b.StageAddress1ContiniousSelect) {
@@ -204,8 +219,6 @@ void ControllerProcessStageAddressSwitches(uButtons * key) {
   } else {
     DisableContinuousStageAddress2();
   }
-
-  display_update_flags.b.MainDisplay = 1;
 }
 
 void ControllerProcessNavigationSwitches(uButtons* key) {

@@ -24,6 +24,7 @@
 #include "afg.h"
 #include "display.h"
 #include "controller.h"
+#include "cycle_counter.h"
 
 #define SEQUENCER_DATA_SIZE (6*2*32)
 
@@ -35,31 +36,33 @@ RCC_ClocksTypeDef RCC_Clocks;
 
 unsigned char revision; 
 
+// Inlined for performance
 inline FlagStatus ADC_GetFlagStatus_In(ADC_TypeDef* ADCx, uint8_t ADC_FLAG) {
   FlagStatus bitstatus = RESET;
 
-  /* Check the status of the specified ADC flag */
-  if ((ADCx->SR & ADC_FLAG) != (uint8_t)RESET)
-  {
-    /* ADC_FLAG is set */
+  if ((ADCx->SR & ADC_FLAG) != (uint8_t)RESET) {
     bitstatus = SET;
-  }
-  else
-  {
-    /* ADC_FLAG is reset */
+  } else {
     bitstatus = RESET;
   }
-  /* Return the ADC_FLAG status */
   return  bitstatus;
 }
 
 // ADC interrupt handler
 void ADC_IRQHandler() {
   volatile uint8_t stage = 0;
+  __disable_irq();
+
   uint8_t adc1_eoc = ADC_GetFlagStatus_In(ADC1, ADC_FLAG_EOC) == SET;
   uint8_t adc2_eoc = ADC_GetFlagStatus_In(ADC2, ADC_FLAG_EOC) == SET;
 
-  if (controller_job_flags.adc_mux_shift_out) return;
+  if (adc1_eoc) ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
+  if (adc2_eoc) ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
+
+  if (controller_job_flags.inhibit_adc) {
+    __enable_irq();
+    return;
+  }
 
   if (controller_job_flags.adc_pot_sel < 16 && adc1_eoc) {
     // POT_TYPE_VOLTAGE EOC
@@ -90,10 +93,7 @@ void ADC_IRQHandler() {
     WriteTimeSlider(stage, ADC1->DR);
     controller_job_flags.adc_mux_shift_out = 1;
   }
-
-  // Clear flags
-  ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
-  ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
+  __enable_irq();
 }
 
 
@@ -112,9 +112,9 @@ void mADC_init(void)
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
 
   TIM_TimeBaseStructInit(&TimeBaseInit);
-  TimeBaseInit.TIM_Prescaler 			= 100;
+  TimeBaseInit.TIM_Prescaler 			= 1000;
   TimeBaseInit.TIM_CounterMode 		= TIM_CounterMode_Up;
-  TimeBaseInit.TIM_Period 				= 1680; // 10kHz
+  TimeBaseInit.TIM_Period 				= 6;
   TimeBaseInit.TIM_ClockDivision 	= TIM_CKD_DIV1;
   TIM_TimeBaseInit(TIM2, &TimeBaseInit); 
 
@@ -271,15 +271,16 @@ void EXTI9_5_IRQHandler() {
 	Every interrupt of Timer 4 triggers new output voltages and a check if the step has ended.
  */
 void TIM4_IRQHandler() {
+  // Clear interrupt flag for Timer 4
+  TIM4->SR = (uint16_t) ~TIM_IT_Update;
+  __disable_irq();
   // Process one time window and return the programmed output levels
   controller_job_flags.afg1_outputs = AfgTick1();
   // Update internal dac (fast)
   DAC_SetChannel1Data(DAC_Align_12b_R, controller_job_flags.afg1_outputs.voltage);
   // Set flag to flush time and ref levels to external dac (slow)
   controller_job_flags.afg1_tick = 1;
-
-  // Clear interrupt flag for Timer 4
-  TIM4->SR = (uint16_t) ~TIM_IT_Update;
+  __enable_irq();
 };
 
 /*
@@ -287,12 +288,13 @@ void TIM4_IRQHandler() {
   Keep in sync with TIM4_IRQHandler().
  */
 void TIM5_IRQHandler() {
+  // Clear interrupt flag for Timer 5
+  TIM5->SR = (uint16_t) ~TIM_IT_Update;
+  __disable_irq();
   controller_job_flags.afg2_outputs = AfgTick2();
   DAC_SetChannel2Data(DAC_Align_12b_R, controller_job_flags.afg2_outputs.voltage);
   controller_job_flags.afg2_tick = 1;
-
-  // Clear interrupt flag for Timer 5
-  TIM5->SR = (uint16_t) ~TIM_IT_Update;
+  __enable_irq();
 };
 
 
@@ -309,7 +311,7 @@ void mTimersInit(void)
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
 
   TIM_TimeBaseStructInit(&myTimer);
-  myTimer.TIM_Prescaler = STEP_TIMER_PRESCALER;
+  myTimer.TIM_Prescaler = AFG_TIMER_PRESCALER;
   myTimer.TIM_Period = 1;
   myTimer.TIM_ClockDivision = TIM_CKD_DIV1;
   myTimer.TIM_CounterMode = TIM_CounterMode_Up;
@@ -361,7 +363,7 @@ void mTimersInit(void)
 
   TIM_TimeBaseStructInit(&myTimer);
   myTimer.TIM_Prescaler = 210;
-  myTimer.TIM_Period = 640;// Seq2 pulse duration
+  myTimer.TIM_Period = 640; // why is it 2x?
   myTimer.TIM_ClockDivision = TIM_CKD_DIV1;
   myTimer.TIM_CounterMode = TIM_CounterMode_Up;
 
@@ -662,6 +664,8 @@ int main(void)
 {
   uButtons myButtons;
   uLeds mLeds;
+
+  start_cycle_timer();
 
   /* Reset update states */
   display_update_flags.value = 0x00;

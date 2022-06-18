@@ -66,11 +66,6 @@ extern volatile uint8_t afg2_stage_address;
 extern volatile uint8_t afg1_section;
 extern volatile uint8_t afg2_section;
 
-// Timing constants
-#define STEP_TIMER_FREQ_OUT   8000     // 8 kHz
-#define STEP_TIMER_PRESCALER  21000    // 168000000 / STEP_TIMER_FREQ_OUT
-#define START_TIMER_SUSTAIN   1        // 1 tick
-
 // Get the step num, taking into account section offset
 inline uint8_t get_afg1_step_num() {
   return afg1_step_num + (afg1_section << 4);
@@ -161,7 +156,7 @@ inline void ComputeContinuousStep2() {
 // Pulses
 
 inline void DoStepOutputPulses1() {
-  uStep step = get_step_programming(0, afg1_step_num);
+  uStep step = get_step_programming(afg1_section, afg1_step_num);
 
   PULSE_LED_I_ALL_ON;
   if (step.b.OutputPulse1) {
@@ -178,7 +173,7 @@ inline void DoStepOutputPulses1() {
 }
 
 inline void DoStepOutputPulses2() {
-  uStep step = get_step_programming(1, afg2_step_num);
+  uStep step = get_step_programming(afg2_section, afg2_step_num);
 
   PULSE_LED_II_ALL_ON;
   if (step.b.OutputPulse1) {

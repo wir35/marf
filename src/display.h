@@ -54,7 +54,10 @@ inline void update_steps_display() {
 void UpdateModeSectionLeds();
 
 // Update step leds
-void UpdateStepSection();
+void UpdateStepSectionLeds();
+
+// Flush updates out to led shift registers
+void FlushLedUpdates();
 
 // Flash leds for clear
 void RunClearAnimation();

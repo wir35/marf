@@ -9,6 +9,7 @@
 typedef struct  {
   uint8_t adc_pot_sel;
   uint8_t adc_mux_shift_out;
+  uint8_t inhibit_adc;
   uint8_t afg1_tick;
   ProgrammedOutputs afg1_outputs;
   uint8_t afg2_tick;
@@ -23,7 +24,7 @@ extern volatile ControllerJobFlags controller_job_flags;
 #define KEY_DEBOUNCE_COUNT 3  // 3 bounces
 #define KEY_TIMER 5  // scan switches every 5ms
 
-#define LONG_COUNTER_TICKS  20;
+#define LONG_COUNTER_TICKS  30;
 #define SHORT_COUNTER_TICKS 10;
 #define SCROLL_WAIT_COUNTER 120;
 

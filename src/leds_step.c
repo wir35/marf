@@ -62,17 +62,9 @@ void LED_STEP_SendWord(unsigned long int data)
 }
 
 /*Turn on the LED which indicates the step number StepNum*/
-void LED_STEP_LightStep(unsigned int StepNum)
-{
-	unsigned long dat = 0xFFFFFFFF;
-	unsigned char cnt;
-	
-	dat &= ~(1<<0);
-	for(cnt=0;cnt<StepNum;cnt++)
-	{		
-		dat = dat<<1;
-		dat |= (1<<0);		
-	};
+void LED_STEP_LightStep(uint8_t step_num) {
+	uint32_t dat = 0xFFFFFFFF;
+	dat &= ~(1UL << step_num);
 		
 	if (Is_Expander_Present()) {
 	  LED_STEP_SendWordExpanded(dat);
