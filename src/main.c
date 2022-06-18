@@ -521,7 +521,7 @@ void PermutePulses(void)
   DISPLAY_LED_I_OFF;
   DISPLAY_LED_II_OFF;
 
-  myButtons.value = GetButton();
+  myButtons.value = HC165_ReadSwitches();
   // Flash pulse 1 until one of the switches is activated
   while (myButtons.b.Pulse1On && myButtons.b.Pulse2On) {
     i++;
@@ -535,7 +535,7 @@ void PermutePulses(void)
       i = 0; 
     }
     LEDS_modes_SendStruct(&mLeds);
-    myButtons.value = GetButton();
+    myButtons.value = HC165_ReadSwitches();
   }
   if (!myButtons.b.Pulse1On) // user is happy with pulse 1 
   {
@@ -549,7 +549,7 @@ void PermutePulses(void)
   mLeds.b.Pulse1=0;
   LEDS_modes_SendStruct(&mLeds);
   while (!(myButtons.b.Pulse1On && myButtons.b.Pulse2On)) {
-    myButtons.value = GetButton(); 
+    myButtons.value = HC165_ReadSwitches(); 
   }
 }
 
@@ -559,7 +559,7 @@ void Calibration(void)
   unsigned int i=0;
   uButtons myButtons;
   uLeds mLeds;
-  myButtons.value = GetButton();
+  myButtons.value = HC165_ReadSwitches();
 
   mLeds.value[0]  	= 0xFF;
   mLeds.value[1]  	= 0xFF;
@@ -602,7 +602,7 @@ void Calibration(void)
     else i = 0;
 
     LEDS_modes_SendStruct(&mLeds);
-    myButtons.value = GetButton();
+    myButtons.value = HC165_ReadSwitches();
   }
 
   for(i = 0; i < 8 ; i++)
@@ -653,7 +653,7 @@ void Calibration(void)
     }
     else i = 0;
     LEDS_modes_SendStruct(&mLeds);
-    myButtons.value = GetButton();
+    myButtons.value = HC165_ReadSwitches();
   }
 
 }
@@ -708,7 +708,7 @@ int main(void)
   LEDS_modes_SendStruct(&mLeds);
 
   /* Switches input config */
-  init_HC165();
+  HC165_InitializeGPIO();
 
   /* External DAC config */
   MAX5135_Initialize();
@@ -731,7 +731,7 @@ int main(void)
   revision = versionRevised();
 
   // Scan initial state
-  myButtons.value = GetButton();
+  myButtons.value = HC165_ReadSwitches();
 
   if(!myButtons.b.StageAddress1Advance) {
     // If advance 1 switch is pressed, enter calibration loop

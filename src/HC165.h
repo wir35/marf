@@ -1,9 +1,29 @@
-#ifndef HC165_H_
-#define HC165_H_
+#ifndef __HC165_H_
+#define __HC165_H_
+
+#include <stdint.h>
 
 #include "delays.h"
 
-// Union which allows to control each switch on panel separately
+//
+
+#define HC165_GPIO_PIN_DAT  GPIO_Pin_0
+#define HC165_GPIO_PIN_CP   GPIO_Pin_1
+#define HC165_GPIO_PIN_CE   GPIO_Pin_2
+#define HC165_GPIO_PIN_PL   GPIO_Pin_3
+
+// CP
+#define HC165_CLOCK_HIGH  GPIO_SetBits(GPIOC, GPIO_Pin_1)
+#define HC165_CLOCK_LOW   GPIO_ResetBits(GPIOC, GPIO_Pin_1)
+// PL
+#define HC165_SS_HIGH   GPIO_SetBits(GPIOC, GPIO_Pin_3)
+#define HC165_SS_LOW    GPIO_ResetBits(GPIOC, GPIO_Pin_3)
+// CE
+#define HC165_CE_HIGH   GPIO_SetBits(GPIOC, GPIO_Pin_2)
+#define HC165_CE_LOW    GPIO_ResetBits(GPIOC, GPIO_Pin_2)
+
+
+// Struct that defines the order of all switches as they come in on the shift registers
 typedef union
 {
 	struct {
@@ -79,14 +99,12 @@ typedef union
 		unsigned char NU_Seq2StopBanana:1;
 		unsigned char StageAddress1StrobePulse:1;
 	} b;
-	unsigned long long int value;
+	uint64_t value;
 } uButtons;
 
-void init_HC165(void);
-void HC165_LatchUp(void);
-unsigned char HC165_GetByte(void);
-unsigned long int HC165_GetDWord(void);
-unsigned long int HC165_GetDWord1(void);
-unsigned long long int GetButton(void);
 
-#endif /* HC165_H_ */
+void HC165_InitializeGPIO(void);
+
+uint64_t HC165_ReadSwitches(void);
+
+#endif

@@ -60,7 +60,7 @@ void ControllerMainLoop() {
   uint16_t switch_debounce_counter = KEY_DEBOUNCE_COUNT;
 
   // Initial read
-  stable_switches_state = previous_switches_state = GetButton();
+  stable_switches_state = previous_switches_state = HC165_ReadSwitches();
   switches.value = stable_switches_state;
 
   // Main loop. Does not return.
@@ -76,7 +76,7 @@ void ControllerMainLoop() {
 
     // Scan switches every 5ms
     if (get_millis() - switch_last_read_time > 5) {
-      new_switches_state = GetButton(); // SLOOOOOOOOOOOW right here ..
+      new_switches_state = HC165_ReadSwitches(); // SLOOOOOOOOOOOW right here ..
       switch_last_read_time = get_millis();
       if (new_switches_state == stable_switches_state) {
         // Nothing is happening
@@ -118,8 +118,9 @@ void ControllerMainLoop() {
       UpdateStepSectionLeds();
       display_update_flags.b.StepsDisplay = 0;
     };
-    // Shifting out to the Leds is kind of slow so only update the display when dirty flags are set
-    // and rate limit the update to 50 Hz
+
+    // Flush LEDs every 20ms.
+    // Shifting out to the leds is kind of slow, so rate limit the update to 50 Hz.
     if (get_millis() - leds_update_time > 20) {
       FlushLedUpdates();
       leds_update_time = get_millis();
@@ -325,7 +326,7 @@ void ControllerCheckClear() {
 
   TIM6->SR = (uint16_t) ~TIM_IT_Update;
 
-  myButtons.value = GetButton();
+  myButtons.value = HC165_ReadSwitches();
 
   if (clear_counter1 < 30 && clear_counter2 < 30) {
     if (!myButtons.b.ClearUp || !myButtons.b.ClearDown) {
