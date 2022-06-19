@@ -15,8 +15,7 @@
 #define LED_STEP_DATA_LOW				GPIO_ResetBits(GPIOC, GPIO_Pin_8)
 
 /* Init GPIO for LEDs control via HC595 shift registers */
-void LED_STEP_init(void)
-{
+void LED_STEP_init(void) {
 	GPIO_InitTypeDef GPIO_InitStructure;
 	
 	RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
@@ -29,19 +28,15 @@ void LED_STEP_init(void)
 	GPIO_Init(GPIOC, &GPIO_InitStructure);
 }
 
-/*Shift one byte to HC595 registers which control LEDs*/
-void LED_STEP_SendByte(unsigned char data)
-{
-	unsigned char dat, cnt;
-	dat = data;
-	for(cnt=0; cnt<8; cnt++)
-	{
+inline static void led_step_send_byte(uint8_t data) {
+	uint8_t dat = data;
+
+	for(uint8_t cnt = 0; cnt < 8; cnt++) {
 		if ((dat & 0x80) > 0) {
 			LED_STEP_DATA_HIGH;
 		} else {
 			LED_STEP_DATA_LOW;
 		}
-
 		LED_STEP_SHIFT_LOW;
 		DELAY_NOPS_120NS(); 
 		LED_STEP_SHIFT_HIGH;
@@ -51,36 +46,22 @@ void LED_STEP_SendByte(unsigned char data)
 	LED_STEP_DATA_LOW;
 }
 
-/*Shift two bytes to HC595 registers which control LEDs*/
-void LED_STEP_SendWord(unsigned long int data)
-{
+void LED_STEP_SendWord(uint16_t data) {
 	LED_STEP_STORAGE_LOW;
-	LED_STEP_SendByte((unsigned char) ((data&0xFF00)>>8) );
-	LED_STEP_SendByte((unsigned char) (data&0x00FF) );
+
+	led_step_send_byte((uint8_t) (data >>8));
+	led_step_send_byte((uint8_t) (data & 0x00FF));
 
 	LED_STEP_STORAGE_HIGH;
 }
 
-/*Turn on the LED which indicates the step number StepNum*/
-void LED_STEP_LightStep(uint8_t step_num) {
-	uint32_t dat = 0xFFFFFFFF;
-	dat &= ~(1UL << step_num);
-		
-	if (Is_Expander_Present()) {
-	  LED_STEP_SendWordExpanded(dat);
-	} else {
-		LED_STEP_SendWord(dat & 0xFFFF);
-	}
-};
-
 void LED_STEP_SendWordExpanded(uint32_t dat) {
-  uint8_t tmp1 = dat >> 24;
-  uint8_t tmp2 = dat >> 16;
+
   LED_STEP_STORAGE_LOW;
-  LED_STEP_SendByte((unsigned char) (tmp2) );
-  LED_STEP_SendByte((unsigned char) (tmp1) );
-  LED_STEP_SendByte((unsigned char) (dat >> 8) );
-  LED_STEP_SendByte((unsigned char) (dat) );
+  led_step_send_byte((uint8_t) (dat >> 16)); // Verify if these two expander sections are reversed
+  led_step_send_byte((uint8_t) (dat >> 24)); // Seems backwards
+  led_step_send_byte((uint8_t) (dat >> 8));
+  led_step_send_byte((uint8_t) (dat) );
 
   LED_STEP_STORAGE_HIGH;
 }

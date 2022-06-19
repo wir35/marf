@@ -41,10 +41,8 @@ typedef union
 	unsigned char value[4];
 } uLeds;
 
-
 void LEDS_modes_init(void);
-void LEDS_modes_SendByte(unsigned char data);
-void LEDS_modes_SendDWord(unsigned long int data);
+
 void LEDS_modes_SendStruct(uLeds *_Leds);
-extern void delay_us(unsigned int us);
+
 #endif /* LEDS_MODES_H_ */
