@@ -18,6 +18,8 @@ void delay_ms(unsigned int ms);
 
 void delay_us(unsigned int us);
 
+void delay_ns(unsigned int ns);
+
 void systickInit(uint16_t frequency);
 
 void SysTick_Handler (void);

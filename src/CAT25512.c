@@ -1,25 +1,23 @@
+#include "CAT25512.h"
+
 #include <stm32f4xx_rcc.h>
 #include <stm32f4xx_spi.h>
 #include <stm32f4xx_gpio.h>
-#include "CAT25512.h"
 
-/*
-Send one byte to eeprom via SPI
-*/
-void CAT25512_SendByte(unsigned char mData)
-{
+#include "delays.h"
+
+
+void CAT25512_SendByte(unsigned char mData) {
 	while(!SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_TXE)); 
 	SPI_I2S_SendData(SPI3, mData);
 	while(!SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE));
 	SPI_I2S_ReceiveData(SPI3);
 };
 
-
 /*
 Receive one byte from eeprom via SPI
 */
-unsigned short int CAT25512_RecieveData(void)
-{
+unsigned short int CAT25512_RecieveData(void) {
 	while(!SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_TXE)){}; 
 	SPI_I2S_SendData(SPI3, 0x00); 
 	while(!SPI_I2S_GetFlagStatus(SPI3, SPI_I2S_FLAG_RXNE)){};
@@ -30,8 +28,7 @@ unsigned short int CAT25512_RecieveData(void)
 /*
 Initialization of CAT25512 eeprom
 */
-void CAT25512_init(void)
-{
+void CAT25512_init(void) {
 	/* SPI2 setting up*/	
 	GPIO_InitTypeDef mGPIO_InitStructure;
 	SPI_InitTypeDef mSPI;
@@ -82,8 +79,7 @@ void CAT25512_init(void)
 };
 
 /*Returns the contents of eeprom status register*/
-unsigned char CAT25512_ReadStatusRegister()
-{
+unsigned char CAT25512_ReadStatusRegister() {
 	unsigned char mData = 0;
 	CAT25512_CS_SET;
 	CAT25512_SendByte( INTSRUCTION_RDSR );
@@ -95,8 +91,7 @@ unsigned char CAT25512_ReadStatusRegister()
 };
 
 /*Writes a byte to eeprom status register*/
-void CAT25512_WriteStatusRegister(unsigned char mData)
-{
+void CAT25512_WriteStatusRegister(unsigned char mData) {
 	CAT25512_CS_SET;
 	CAT25512_SendByte(INTSRUCTION_WRSR);
 	delay_ns(2);
@@ -106,8 +101,7 @@ void CAT25512_WriteStatusRegister(unsigned char mData)
 };
 
 /*Write enable command*/
-void CAT25512_WREN(void)
-{
+void CAT25512_WREN(void) {
 	CAT25512_CS_SET;
 	CAT25512_SendByte(INTSRUCTION_WREN);
 	delay_ns(200);
@@ -115,8 +109,7 @@ void CAT25512_WREN(void)
 };
 
 /*Write disable command*/
-void CAT25512_WRDI(void)
-{
+void CAT25512_WRDI(void) {
 	CAT25512_CS_SET;
 	CAT25512_SendByte(INTSRUCTION_WRDI);
 	delay_ns(200);
@@ -124,8 +117,7 @@ void CAT25512_WRDI(void)
 };
 
 /*Writes one byte of Data to CAT25512 memory*/
-void CAT25512_WriteByte(unsigned short int Address, unsigned char Data)
-{
+void CAT25512_WriteByte(unsigned short int Address, unsigned char Data) {
 	CAT25512_CS_SET;
 	CAT25512_SendByte(INTSRUCTION_WRITE);
 	CAT25512_SendByte((Address&0xFF00)>>8);
@@ -136,8 +128,7 @@ void CAT25512_WriteByte(unsigned short int Address, unsigned char Data)
 };
 
 /*Reads one byte of Data from CAT25512 memory*/
-unsigned char CAT25512_ReadByte(unsigned short int Address)
-{
+unsigned char CAT25512_ReadByte(unsigned short int Address) {
 	unsigned char Data;
 	CAT25512_CS_SET;
 	CAT25512_SendByte(INTSRUCTION_READ);
@@ -150,8 +141,7 @@ unsigned char CAT25512_ReadByte(unsigned short int Address)
 };
 
 /*Writes the Length bytes of Data started from certain Address*/
-void CAT25512_write_block(unsigned short int Address, unsigned char *Data, unsigned short int length)
-{
+void CAT25512_write_block(unsigned short int Address, unsigned char *Data, unsigned short int length) {
 	unsigned short int totalcnt=0;
 	
 	CAT25512_WREN();
@@ -198,8 +188,7 @@ void CAT25512_write_block(unsigned short int Address, unsigned char *Data, unsig
 };
 
 /*Reads the Length bytes of Data started from certain Address*/
-void CAT25512_read_block(unsigned short int Address, unsigned char *Data, unsigned short int length)
-{
+void CAT25512_read_block(unsigned short int Address, unsigned char *Data, unsigned short int length) {
 	unsigned short int cnt=0, totalcnt=0;
 	
 	CAT25512_CS_SET;
@@ -207,21 +196,6 @@ void CAT25512_read_block(unsigned short int Address, unsigned char *Data, unsign
 	CAT25512_SendByte((Address&0xFF00)>>8);
 	CAT25512_SendByte((Address&0x00FF));
 	while(totalcnt<length) {
-		//if (cnt == 127) {
-		/*if ( (((Address+totalcnt)&0x007F) == 0) && (totalcnt != 0) ) {
-			//New page reached
-			cnt = 0;
-			//Stop data send
-			delay_ns(200);
-			CAT25512_CS_CLEAR;			
-			//read status register
-			delay_ms(10);
-			CAT25512_CS_SET;
-			CAT25512_SendByte(INTSRUCTION_READ);
-			CAT25512_SendByte(((Address+totalcnt)&0xFF00)>>8);
-			CAT25512_SendByte(((Address+totalcnt)&0x00FF));	
-		};*/
-		
 		Data[totalcnt] = CAT25512_RecieveData();
 		totalcnt++;
 		cnt++;
@@ -229,5 +203,4 @@ void CAT25512_read_block(unsigned short int Address, unsigned char *Data, unsign
 	
 	delay_ns(200);
 	CAT25512_CS_CLEAR;
-	
 };
