@@ -1,0 +1,53 @@
+Release Notes
+Version 2.66
+June 2022
+
+Functional changes
+--
+This release brings the v2 marf up to feature parity with Buchla's original unit
+and duplicates the 200 series module's behavior to the best of our knowledge.
+It includes a large number of functional improvements over the earlier firmwares.
+
+1. Programmed pulses fire correctly in all modes, whenever a step changes.
+2. Reference signal present in all modes, whenever a step changes.
+3. Steps set to sloped mode will now slew correctly in all modes including
+   advance, strobe and continuous address.
+4. Quantize mode works correctly on full range steps.
+5. Loop behavior is correct. Loops now search backwards from a "last" step to 
+   the closest "first" step. Multiple loops are now possible.
+6. The "level 2" programming is organized into a single bank.
+   It is no longer different between afg1 and afg2.
+7. External inputs no longer have audible slewing.
+8. Glitches in voltage output fixed.
+9. Step times match panel legend exactly.
+
+Internal performance, operational and code health improvements
+--
+This release required significant refactoring to almost 100% of the codebase,
+including all of the core function generation logic, all of the interface code,
+and much of the internal scheduling logic. This release is able to run at 8x
+the timing resolution of the previous version.
+
+1. Using a much better filtering algorithm consistently on all adc inputs.
+   Fixes slewing on large jumps and jitter on steady state signals.
+2. Output sample rate increased from 4kHz to 32kHz.
+3. Voltage quantization and timing computations use higher precision floating point calculations.
+4. Numerous bugs with start/stop and sustain/enable modes ironed out.
+5. Slow code moved out of IRQs into main loop and scheduling tightened up.
+6. Inlining small methods and compiling with speed optimizations.
+7. Reduced function call overhead in peripheral drivers.
+8. Improved display update system lights leds better when the clock is at high speeds.
+9. Applied consistent code style guide including capitilization, indentation.
+10. Improved naming conventions using Buchla standard terminology.
+
+
+Manual Addendum
+--
+
+Calibration procedure.
+
+New features:
+
+1. Afg section shift.
+2. Save and load.
+
