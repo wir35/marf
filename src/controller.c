@@ -111,9 +111,6 @@ void ControllerMainLoop() {
 
       // Apply switches that should only be applied after debounce
       ControllerProcessStageAddressSwitches(&switches);
-
-      // Wait for long press on clear
-      if (!switches.b.ClearUp || !switches.b.ClearDown) InitClear_Timer();
     }
 
     // Step programming can be applied continuously to be more responsive,
@@ -230,6 +227,32 @@ void ControllerProcessStageAddressSwitches(uButtons * key) {
     EnableContinuousStageAddress2();
   } else {
     DisableContinuousStageAddress2();
+  }
+
+  // Save and load
+
+  // Either display switch active
+  uint8_t display_switches = (!key->b.StageAddress1Display || !key->b.StageAddress2Display);
+
+  if (!key->b.ClearDown && display_switches) {
+    // Either display switch down plus clear down
+    // Save program 0
+    CAT25512_write_block(
+        eprom_memory.programs[0].start,
+        (unsigned char *) steps,
+        eprom_memory.programs[0].size);
+    RunSaveProgramAnimation();
+  } else if (!key->b.ClearUp && display_switches) {
+    // Either display switch down plus clear up
+    // Load program 0
+    CAT25512_read_block(
+        eprom_memory.programs[0].start,
+        (unsigned char *) steps,
+        eprom_memory.programs[0].size);
+    RunLoadProgramAnimation();
+  } else if (!key->b.ClearUp || !key->b.ClearDown) {
+    // Wait for long press on clear
+    InitClear_Timer();
   }
 }
 

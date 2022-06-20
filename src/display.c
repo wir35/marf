@@ -213,3 +213,21 @@ void RunCalibrationAnimation() {
   LEDS_modes_SendStruct(&mode_leds_lit);
   counter += 1;
 }
+
+void RunSaveProgramAnimation() {
+  steps_leds_lit = 0xFFFF;
+  for (uint8_t l = 0; l < 16; l++) {
+    LED_STEP_SendWord(steps_leds_lit);
+    steps_leds_lit &= ~(1UL << l);
+    delay_ms(10);
+  }
+}
+
+void RunLoadProgramAnimation() {
+  steps_leds_lit = 0xFFFF;
+  for (uint8_t l = 15; l > 0; l--) {
+    LED_STEP_SendWord(steps_leds_lit);
+    steps_leds_lit &= ~(1UL << l);
+    delay_ms(10);
+  }
+}

@@ -67,5 +67,8 @@ void RunClearAnimation();
 // Flash leds for calibration mode
 void RunCalibrationAnimation();
 
+// Flash leds for save and load program
+void RunSaveProgramAnimation();
+void RunLoadProgramAnimation();
 
 #endif

@@ -10,7 +10,7 @@
 EpromMemory eprom_memory = {};
 
 void EpromInitializeMemoryLayout() {
-  uint16_t start = 0, size = 0; // in bytes
+  volatile uint16_t start = 0, size = 0; // in bytes
 
   // Saved programs at the head
   size = sizeof(steps);
