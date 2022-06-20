@@ -63,6 +63,8 @@ void ControllerMainLoop() {
   stable_switches_state = previous_switches_state = HC165_ReadSwitches();
   switches.value = stable_switches_state;
 
+  AfgAllInitialize();
+
   // Main loop. Does not return.
   while (1) {
 

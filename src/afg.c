@@ -74,6 +74,19 @@ void InitStart_2_SignalTimer() {
   NVIC_EnableIRQ(TIM7_IRQn);
 };
 
+void AfgAllInitialize() {
+  afg1_section = 0;
+  afg1_step_num = 0;
+  afg1_step_cnt = 0;
+  afg1_mode = MODE_STOP;
+
+  afg2_section = 0;
+  afg2_step_num = 0;
+  afg2_step_cnt = 0;
+  afg2_mode = MODE_STOP;
+}
+
+
 void DoStop1() {
   if (afg1_mode == MODE_RUN) {
     afg1_prev_mode = MODE_RUN;
@@ -97,7 +110,6 @@ void DoStart1() {
     afg1_step_num = GetNextStep(afg1_section, afg1_step_num);
     afg1_step_cnt = 0;
     update_display();
-    DoStepOutputPulses1();
   }
 
   if (afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
@@ -124,7 +136,6 @@ uint8_t CheckStart1() {
     afg1_mode = MODE_RUN;
     afg1_step_num = GetNextStep(afg1_section, afg1_step_num);
     afg1_step_cnt = 0;
-    DoStepOutputPulses1();
     return 1;
   } else {
     return 0;
@@ -137,7 +148,6 @@ void DoStart2() {
     afg2_step_num = GetNextStep(afg2_section, afg2_step_num);
     afg2_step_cnt = 0;
     update_display();
-    DoStepOutputPulses2();
   }
   if(afg2_mode == MODE_WAIT_HI_Z || afg2_mode == MODE_STAY_HI_Z) {
     InitStart_2_SignalTimer();
@@ -161,7 +171,6 @@ uint8_t CheckStart2() {
     afg2_mode = MODE_RUN;
     afg2_step_num = GetNextStep(afg2_section, afg2_step_num);
     afg2_step_cnt = 0;
-    DoStepOutputPulses2();
     return 1;
   } else {
     return 0;
@@ -206,8 +215,6 @@ void JumpToStep1(unsigned int step) {
   // Set AFG1 reference out value
   // (Slopes down from 1023 to 0 over the course of the step)
   MAX5135_DAC_send(MAX5135_DAC_CH_1, 1023);
-
-  DoStepOutputPulses1();
 }
 
 /* Handle jumping to new stage. Keep in sync with 1. */
@@ -235,8 +242,6 @@ void JumpToStep2(unsigned int step) {
   MAX5135_DAC_send(MAX5135_DAC_CH_2,
       GetStepTime(afg2_section, afg2_step_num) >> 2);
   MAX5135_DAC_send(MAX5135_DAC_CH_3, 1023);
-
-  DoStepOutputPulses2();
 }
 
 // Take the GPIO data directly, detect rising edges and trigger stop, start and advance
@@ -299,7 +304,6 @@ ProgrammedOutputs AfgTick1() {
 
   float delta_voltage = 0.0;
   uint16_t output_voltage = 0;
-  uint8_t do_pulses = 0; // 1 if pulses should fire
   uint8_t do_recalculate_step_width = 1;
   ProgrammedOutputs outputs;
   volatile uint32_t clocks = CLOCK_SOURCE_GET_TIMER();
@@ -320,7 +324,6 @@ ProgrammedOutputs AfgTick1() {
         afg1_step_num = (unsigned int) (afg1_stage_address);
         // Reset step counter
         afg1_step_cnt = 0;
-        do_pulses = 1;
         do_recalculate_step_width = 1;
       }
   } else if ((afg1_step_cnt >= afg1_step_width)) {
@@ -370,7 +373,6 @@ ProgrammedOutputs AfgTick1() {
     if (afg1_mode == MODE_RUN) {
       // Advance to the next step
       afg1_step_num = GetNextStep(afg1_section, afg1_step_num);
-      do_pulses = 1;
       afg1_step_cnt = 0; // Reset step counter
       do_recalculate_step_width = 1;
     };
@@ -410,8 +412,16 @@ ProgrammedOutputs AfgTick1() {
 
   afg1_step_level = output_voltage;
   outputs.voltage = output_voltage;
-  // Now that output voltages are set, pulses can fire now
-  if (do_pulses) DoStepOutputPulses1();
+
+  if (afg1_step_cnt > PULSE_ACTIVE_STEP_WIDTH) {
+    outputs.all_pulses = 0;
+    outputs.pulse1 = 0;
+    outputs.pulse2 = 0;
+  } else {
+    outputs.all_pulses = 1;
+    outputs.pulse1 = get_step_programming(afg1_section, afg1_step_num).b.OutputPulse1;
+    outputs.pulse2 = get_step_programming(afg1_section, afg1_step_num).b.OutputPulse2;
+  }
 
   if (do_recalculate_step_width) {
     afg1_step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());
@@ -425,7 +435,6 @@ ProgrammedOutputs AfgTick2() {
 
   float delta_voltage = 0.0;
   uint16_t output_voltage = 0;
-  uint8_t do_pulses = 0;
   ProgrammedOutputs outputs;
 
   // step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());
@@ -441,7 +450,6 @@ ProgrammedOutputs AfgTick2() {
       afg2_step_num = (unsigned int) (afg2_stage_address);
       // Reset step counter
       afg2_step_cnt = 0;
-      do_pulses = 1;
     }
   } else if (afg2_step_cnt >= afg2_step_width) {
     afg2_step_cnt = 0xFFFFFFFF;
@@ -477,7 +485,6 @@ ProgrammedOutputs AfgTick2() {
 
     if (afg2_mode == MODE_RUN) {
       afg2_step_num = GetNextStep(afg2_section, afg2_step_num);
-      do_pulses = 1;
       afg2_step_cnt = 0;
     };
   }
@@ -492,9 +499,11 @@ ProgrammedOutputs AfgTick2() {
 
     if (get_step_programming(afg2_section, afg2_step_num).b.Sloped ) {
       if (afg2_prev_step_level >= output_voltage) {
+        // Slope down
         delta_voltage = (float) (afg2_prev_step_level - output_voltage) / afg2_step_width;
         output_voltage = afg2_prev_step_level - (unsigned int) (delta_voltage * afg2_step_cnt);
       } else if (output_voltage > afg2_prev_step_level) {
+        // Slope up
         delta_voltage =  (float) (output_voltage - afg2_prev_step_level) / afg2_step_width;
         output_voltage = afg2_prev_step_level + (unsigned int) (delta_voltage * afg2_step_cnt);
       }
@@ -506,7 +515,15 @@ ProgrammedOutputs AfgTick2() {
   afg2_step_level = output_voltage;
   outputs.voltage = output_voltage;
 
-  if (do_pulses) DoStepOutputPulses2();
+  if (afg2_step_cnt > PULSE_ACTIVE_STEP_WIDTH) {
+    outputs.all_pulses = 0;
+    outputs.pulse1 = 0;
+    outputs.pulse2 = 0;
+  } else {
+    outputs.all_pulses = 1;
+    outputs.pulse1 = get_step_programming(afg2_section, afg2_step_num).b.OutputPulse1;
+    outputs.pulse2 = get_step_programming(afg2_section, afg2_step_num).b.OutputPulse2;
+  }
 
   return outputs;
 };

@@ -31,6 +31,9 @@ typedef struct {
   uint16_t voltage;
   uint16_t time;
   uint16_t ref;
+  uint8_t all_pulses:1;
+  uint8_t pulse1:1;
+  uint8_t pulse2:1;
 } ProgrammedOutputs;
 
 // Sequencer modes
@@ -75,6 +78,8 @@ inline uint8_t get_afg1_step_num() {
 inline uint8_t get_afg2_step_num() {
   return afg2_step_num + (afg2_section << 4);
 }
+
+void AfgAllInitialize();
 
 // Jump steps
 
@@ -151,42 +156,6 @@ inline void ComputeContinuousStep1() {
 
 inline void ComputeContinuousStep2() {
   afg2_stage_address = read_calibrated_add_data_uint16(ADC_STAGEADDRESS_Ch_2) >> get_max_step_shift12();
-}
-
-// Pulses
-
-inline void DoStepOutputPulses1() {
-  uStep step = get_step_programming(afg1_section, afg1_step_num);
-
-  PULSE_LED_I_ALL_ON;
-  if (step.b.OutputPulse1) {
-    PULSE_LED_I_1_ON;
-  };
-  if (step.b.OutputPulse2) {
-    PULSE_LED_I_2_ON;
-  };
-
-  // Start Timer 14 and pulse will turn off when it elapses
-  TIM_Cmd(TIM14, ENABLE);
-  TIM_SetCounter(TIM14, 0x00);
-  // The IRQ handler is in main.c
-}
-
-inline void DoStepOutputPulses2() {
-  uStep step = get_step_programming(afg2_section, afg2_step_num);
-
-  PULSE_LED_II_ALL_ON;
-  if (step.b.OutputPulse1) {
-    PULSE_LED_II_1_ON;
-  };
-  if (step.b.OutputPulse2) {
-    PULSE_LED_II_2_ON;
-  };
-
-  // Start Timer 8 and pulse will turn off when it elapses
-  TIM_Cmd(TIM8, ENABLE);
-  TIM_SetCounter(TIM8, 0x00);
-  // The IRQ handler is in main.c
 }
 
 inline void EnableContinuousStageAddress1() {

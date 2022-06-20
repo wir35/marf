@@ -154,6 +154,8 @@ inline uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
 #define STEP_WIDTH_28S (AFG_TICK_FREQUENCY * 28.0)
 #define RECIPROCAL_12BIT (1.0 / 4096.0)
 
+#define PULSE_ACTIVE_STEP_WIDTH (AFG_TICK_FREQUENCY / 1000) // 1 ms
+
 inline uint32_t GetStepWidth(uint8_t section, uint8_t step_num, float time_multiplier) {
   float step_width = 0.0;
   float time_level = 0.0;

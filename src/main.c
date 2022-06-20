@@ -274,11 +274,31 @@ void TIM4_IRQHandler() {
   // Clear interrupt flag for Timer 4
   TIM4->SR = (uint16_t) ~TIM_IT_Update;
   __disable_irq();
+
   // Process one time window and return the programmed output levels
   controller_job_flags.afg1_outputs = AfgTick1();
+
   // Update internal dac (fast)
   DAC_SetChannel1Data(DAC_Align_12b_R, controller_job_flags.afg1_outputs.voltage);
-  // Set flag to flush time and ref levels to external dac (slow)
+
+  // Update output pulses
+  if (controller_job_flags.afg1_outputs.all_pulses) {
+    PULSE_LED_I_ALL_ON;
+  } else {
+    PULSE_LED_I_ALL_OFF;
+  }
+  if (controller_job_flags.afg1_outputs.pulse1) {
+    PULSE_LED_I_1_ON;
+  } else {
+    PULSE_LED_I_1_OFF;
+  }
+  if (controller_job_flags.afg1_outputs.pulse2) {
+    PULSE_LED_I_2_ON;
+  } else {
+    PULSE_LED_I_2_OFF;
+  }
+
+  // Set flag to flush time and ref levels to external dac in main loop (slow)
   controller_job_flags.afg1_tick = 1;
   __enable_irq();
 };
@@ -292,6 +312,23 @@ void TIM5_IRQHandler() {
   TIM5->SR = (uint16_t) ~TIM_IT_Update;
   __disable_irq();
   controller_job_flags.afg2_outputs = AfgTick2();
+
+  if (controller_job_flags.afg2_outputs.all_pulses) {
+    PULSE_LED_II_ALL_ON;
+  } else {
+    PULSE_LED_II_ALL_OFF;
+  }
+  if (controller_job_flags.afg2_outputs.pulse1) {
+    PULSE_LED_II_1_ON;
+  } else {
+    PULSE_LED_II_1_OFF;
+  }
+  if (controller_job_flags.afg2_outputs.pulse2) {
+    PULSE_LED_II_2_ON;
+  } else {
+    PULSE_LED_II_2_OFF;
+  }
+
   DAC_SetChannel2Data(DAC_Align_12b_R, controller_job_flags.afg2_outputs.voltage);
   controller_job_flags.afg2_tick = 1;
   __enable_irq();
@@ -347,6 +384,7 @@ void mTimersInit(void)
 
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM14, ENABLE);
 
+  /*
   TIM_TimeBaseStructInit(&myTimer);
   myTimer.TIM_Prescaler = 210;
   myTimer.TIM_Period = 320;
@@ -360,10 +398,11 @@ void mTimersInit(void)
   NVIC_EnableIRQ(TIM8_TRG_COM_TIM14_IRQn);
 
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM8, ENABLE);
+  */
 
   TIM_TimeBaseStructInit(&myTimer);
   myTimer.TIM_Prescaler = 210;
-  myTimer.TIM_Period = 640; // why is it 2x?
+  myTimer.TIM_Period = 640;
   myTimer.TIM_ClockDivision = TIM_CKD_DIV1;
   myTimer.TIM_CounterMode = TIM_CounterMode_Up;
 
@@ -375,28 +414,18 @@ void mTimersInit(void)
 
 };
 
-// Turn off pulses afg 1
-void TIM8_UP_TIM13_IRQHandler(void)
-{
-  if(TIM_GetITStatus(TIM8, TIM_IT_Update) != RESET)
-  {
+// Timer 8 IRQ. No longer used
+void TIM8_UP_TIM13_IRQHandler(void) {
+  if(TIM_GetITStatus(TIM8, TIM_IT_Update) != RESET) {
     TIM_Cmd(TIM8, DISABLE);
-    PULSE_LED_II_ALL_OFF;
-    PULSE_LED_II_1_OFF;
-    PULSE_LED_II_2_OFF;
     TIM_ClearITPendingBit(TIM8, TIM_IT_Update);
   }
 }
 
-// Turn off pulses afg 2
-void TIM8_TRG_COM_TIM14_IRQHandler(void)
-{
-  if(TIM_GetITStatus(TIM14, TIM_IT_Update) != RESET)
-  {
+// Timer 14 IRQ. No longer used.
+void TIM8_TRG_COM_TIM14_IRQHandler(void) {
+  if(TIM_GetITStatus(TIM14, TIM_IT_Update) != RESET) {
     TIM_Cmd(TIM14, DISABLE);
-    PULSE_LED_I_ALL_OFF;
-    PULSE_LED_I_1_OFF;
-    PULSE_LED_I_2_OFF;
     TIM_ClearITPendingBit(TIM14, TIM_IT_Update);
   }
 }
@@ -425,8 +454,7 @@ void TIM6_DAC_IRQHandler() {
 /*
 Init GPIO for pulses generation
  */
-void PulsesInit()
-{
+void PulsesInit() {
   GPIO_InitTypeDef GPIO_Pulses;
 
   RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);
@@ -722,9 +750,6 @@ int main(void)
   mInterruptInit();
 
   InternalDACInit();
-
-  afg1_mode = MODE_STOP;
-  afg2_mode = MODE_STOP;
 
   // Check which version of the MCU we have
   versionInit();
