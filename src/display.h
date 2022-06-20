@@ -50,6 +50,8 @@ inline void update_steps_display() {
   display_update_flags.b.StepsDisplay = 1;
 }
 
+void DisplayAllInitialize();
+
 // Update display leds in programming section
 void UpdateModeSectionLeds();
 
@@ -61,5 +63,9 @@ void FlushLedUpdates();
 
 // Flash leds for clear
 void RunClearAnimation();
+
+// Flash leds for calibration mode
+void RunCalibrationAnimation();
+
 
 #endif

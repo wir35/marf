@@ -8,6 +8,7 @@
 #include "adc_pots_selector.h"
 #include "MAX5135.h"
 #include "delays.h"
+#include "eprom.h"
 
 // Step selected for editing (0-31)
 volatile uint8_t edit_mode_step_num = 0;
@@ -15,6 +16,14 @@ volatile uint8_t edit_mode_section = 0;
 
 // Jobs
 volatile ControllerJobFlags controller_job_flags;
+
+inline static void adc_pause(void) {
+  NVIC_DisableIRQ(ADC_IRQn);
+};
+
+inline static void adc_resume(void) {
+  NVIC_EnableIRQ(ADC_IRQn);
+};
 
 // Start Timer 6 for clear switch measurement
 void InitClear_Timer() {
@@ -364,4 +373,91 @@ void ControllerCheckClear() {
     clear_counter1 = 0;
     clear_counter2 = 0;
   };
+}
+
+void ControllerCalibrationLoop() {
+    uButtons switches;
+    switches.value = HC165_ReadSwitches();
+
+    DISPLAY_LED_I_OFF;
+    DISPLAY_LED_II_OFF;
+
+    // Run animation, and continue doing adc reads until stage 2 advance is pressed
+    while (switches.b.StageAddress2Advance) {
+      RunCalibrationAnimation();
+      switches.value = HC165_ReadSwitches();
+
+      if (!switches.b.Pulse1On) {
+        // Choose normal behavior
+        swapped_pulses = 0;
+      } else if (!switches.b.Pulse2On) {
+        // Choose swapped pulse leds behavior
+        swapped_pulses = 1;
+      }
+
+      // Shift adc mux if time
+      if (controller_job_flags.adc_mux_shift_out) {
+        // Disable conversion during shift
+        controller_job_flags.inhibit_adc = 1;
+        if (Is_Expander_Present()) {
+          // Increment the slider, including expander sliders
+          controller_job_flags.adc_pot_sel = AdcMuxAdvanceExpanded(controller_job_flags.adc_pot_sel);
+        } else {
+          // Increments the slider
+          controller_job_flags.adc_pot_sel = AdcMuxAdvance(controller_job_flags.adc_pot_sel);
+        }
+        controller_job_flags.adc_mux_shift_out = 0;
+        // Wait for settle
+        delay_ms(10);
+        // Reenable conversion again
+        controller_job_flags.inhibit_adc = 0;
+      }
+    } // End read loop
+
+    // Read calibration constants
+    adc_pause();
+    for (uint8_t c = 0; c < 8 ; c++) {
+      cal_constants[c] = add_data[c];
+      if (cal_constants[c] < 500) {
+        // Extremely low reading. Probably wrong. Discard it.
+        cal_constants[c] = 4095;
+      }
+    };
+    __disable_irq();
+
+    // Erase EPROM
+    CAT25512_erase();
+
+    // Store calibration constants to eprom
+    CAT25512_write_block(
+        eprom_memory.analog_cal_data.start,
+        (unsigned char *) cal_constants,
+        eprom_memory.analog_cal_data.size);
+
+    // Store swapped pulses
+    CAT25512_write_block(
+        eprom_memory.pulse_leds_switched.start,
+        (unsigned char *) &swapped_pulses,
+        eprom_memory.pulse_leds_switched.size);
+
+
+    __enable_irq();
+    adc_resume();
+}
+
+void ControllerLoadCalibration() {
+  // Read analog calibration data
+  CAT25512_read_block(
+      eprom_memory.analog_cal_data.start,
+      (unsigned char *) cal_constants,
+      eprom_memory.analog_cal_data.size);
+
+  // Read swapped pulses choice
+  CAT25512_read_block(
+      eprom_memory.pulse_leds_switched.start,
+      (unsigned char *) &swapped_pulses,
+      eprom_memory.pulse_leds_switched.size);
+
+  // Precompute scalers from calibration data
+  PrecomputeCalibration();
 }

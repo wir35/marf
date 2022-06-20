@@ -1,6 +1,8 @@
 #ifndef __CAT25512_H
 #define __CAT25512_H
 
+#include <stdint.h>
+
 /* Instruction list for CAT25512 */
 #define INTSRUCTION_WREN	0x06
 #define INTSRUCTION_WRDI	0x04
@@ -21,17 +23,13 @@
 #define CAT25512_CS_SET		GPIO_ResetBits(GPIOD, GPIO_Pin_2)
 #define CAT25512_CS_CLEAR	GPIO_SetBits(GPIOD, GPIO_Pin_2)
 
-void CAT25512_SendByte(unsigned char mData);
-unsigned short int CAT25512_RecieveData(void);
 void CAT25512_init(void);
-unsigned char CAT25512_ReadStatusRegister(void);
-void CAT25512_WriteStatusRegister(unsigned char mData);
-void CAT25512_WREN(void);
-void CAT25512_WRDI(void);
-void CAT25512_WriteByte(unsigned short int Address, unsigned char Data);
-unsigned char CAT25512_ReadByte(unsigned short int Address);
-void CAT25512_write_block(unsigned short int Address, unsigned char *Data, unsigned short int length);
-void CAT25512_read_block(unsigned short int Address, unsigned char *Data, unsigned short int length);
+
+void CAT25512_write_block(uint16_t address, uint8_t* data, uint16_t size);
+
+void CAT25512_read_block(uint16_t address, uint8_t* data, uint16_t size);
+
+void CAT25512_erase();
 
 
 #endif //__CAT25512_H

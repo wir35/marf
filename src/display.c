@@ -21,6 +21,29 @@ uint32_t steps_leds_lit = 0xFFFFFFFF;
 
 uLeds mode_leds_lit;
 
+void DisplayAllInitialize() {
+  steps_leds_lit = 0xFFFFFFFF;
+  mode_leds_lit.value[0] = 0xFF;
+  mode_leds_lit.value[1] = 0xFF;
+  mode_leds_lit.value[2] = 0xFF;
+  mode_leds_lit.value[3] = 0xFF;
+  mode_leds_lit.b.Seq1Stop = 0;
+  mode_leds_lit.b.Seq2Stop = 0;
+
+  display_update_flags.value = 0x00;
+  display_update_flags.b.MainDisplay  = 1;
+  display_update_flags.b.StepsDisplay = 1;
+
+  display_mode = DISPLAY_MODE_VIEW_1;
+
+  if (Is_Expander_Present()) {
+    LED_STEP_SendWordExpanded(steps_leds_lit);
+  } else {
+    LED_STEP_SendWord(steps_leds_lit);
+  }
+  LEDS_modes_SendStruct(&mode_leds_lit);
+}
+
 // Update the led data for view and edit modes
 void UpdateLedsProgramMode(uLeds* mLeds, uStep* step) {
   mLeds->b.VoltageFull   &= ~step->b.FullRange;
@@ -152,4 +175,41 @@ void FlushLedUpdates() {
   mode_leds_lit.value[1] = 0xFF;
   mode_leds_lit.value[2] = 0xFF;
   mode_leds_lit.value[3] = 0xFF;
+}
+
+// Run/wait/stop leds cycling during calibration
+// Called every 10ms
+void RunCalibrationAnimation() {
+  static uint16_t counter = 0x0000;
+
+  if (counter < 20) {
+    mode_leds_lit.b.Seq1Run = 1;
+    mode_leds_lit.b.Seq1Wait = 1;
+    mode_leds_lit.b.Seq1Stop = 0;
+    mode_leds_lit.b.Seq2Run = 1;
+    mode_leds_lit.b.Seq2Wait = 1;
+    mode_leds_lit.b.Seq2Stop = 0;
+  } else if (counter < 40) {
+    mode_leds_lit.b.Seq1Run = 0;
+    mode_leds_lit.b.Seq1Wait = 1;
+    mode_leds_lit.b.Seq1Stop = 1;
+    mode_leds_lit.b.Seq2Run = 0;
+    mode_leds_lit.b.Seq2Wait = 1;
+    mode_leds_lit.b.Seq2Stop = 1;
+  } else if (counter < 60) {
+    mode_leds_lit.b.Seq1Run = 1;
+    mode_leds_lit.b.Seq1Wait = 0;
+    mode_leds_lit.b.Seq1Stop = 1;
+    mode_leds_lit.b.Seq2Run = 1;
+    mode_leds_lit.b.Seq2Wait = 0;
+    mode_leds_lit.b.Seq2Stop = 1;
+  } else {
+    counter = 0;
+  }
+
+  mode_leds_lit.b.Pulse1 = swapped_pulses;
+  mode_leds_lit.b.Pulse2 = ~swapped_pulses;
+
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  counter += 1;
 }

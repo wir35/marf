@@ -51,6 +51,8 @@ void ControllerProcessNavigationSwitches(uButtons* key);
 
 void ControllerCheckClear();
 
+void ControllerCalibrationLoop();
 
+void ControllerLoadCalibration();
 
 #endif
