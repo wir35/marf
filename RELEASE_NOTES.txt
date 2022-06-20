@@ -44,10 +44,37 @@ the timing resolution of the previous version.
 Manual Addendum
 --
 
-Calibration procedure.
+Calibration Procedure
 
-New features:
+1. Hold Stage Address 1 Advance down during start up.
+2. Leds cycling.
+3. Turn all pots to maximum, and apply 10v to all 4 external inputs
+4. Select pulse 2 up if you need to swap the pulse leds. Led will move to pulse 2.
+5. Select pulse 1 up to swap it back to normal.
+6. Press Stage Address 2 Advance down to save calibration.
+7. It will ERASE the entire eprom, including saved programs.
 
-1. Afg section shift.
-2. Save and load.
+
+Afg Section Shift (unexpanded units only)
+
+1. Afgs 1 and 2 both access the same memory unless you use section shift.
+2. Press Stage Address Display 1 + Stage No Right to move afg1 to steps [16-32].
+3. Press Stage Address Display 1 + Stage No Left to move afg1 back to steps [1-16].
+3. Press Stage Address Display 2 + Stage No Right to move afg2 to steps [16-32].
+4. Press Stage Address Display 2 + Stage No Left to move afg2 back to steps [1-16].
+
+
+Save and Load Program
+
+1. This version supports saving and loading a single program.
+2. Slider data is not saved.
+3. Press Stage Address Display (1 or 2) + Clear Down to save the current program.
+4. Press Stage Address Display (1 or 2) + Clear Up to load the current program.
+5. Save and load can be used while the clock is running!
+
+
+Pulse Tricks
+
+1. A simultaneous pulse to start and stop is the same as the manual advance switch.
+2. A simultaneous pulse to strobe and start will correctly start on the strobed step.
 
