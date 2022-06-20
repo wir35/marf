@@ -152,10 +152,12 @@ ProgrammedOutputs AfgTick2();
 
 inline void ComputeContinuousStep1() {
   afg1_stage_address = read_calibrated_add_data_uint16(ADC_STAGEADDRESS_Ch_1) >> get_max_step_shift12();
+  if (afg1_stage_address > get_max_step()) afg1_stage_address = get_max_step();
 }
 
 inline void ComputeContinuousStep2() {
   afg2_stage_address = read_calibrated_add_data_uint16(ADC_STAGEADDRESS_Ch_2) >> get_max_step_shift12();
+  if (afg2_stage_address > get_max_step()) afg2_stage_address = get_max_step();
 }
 
 inline void EnableContinuousStageAddress1() {
