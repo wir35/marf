@@ -306,7 +306,6 @@ ProgrammedOutputs AfgTick1() {
   uint16_t output_voltage = 0;
   uint8_t do_recalculate_step_width = 1;
   ProgrammedOutputs outputs;
-  volatile uint32_t clocks = CLOCK_SOURCE_GET_TIMER();
 
   // Calculate step duration
   // step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());
@@ -378,8 +377,6 @@ ProgrammedOutputs AfgTick1() {
     };
   };
 
-  if (display_mode == DISPLAY_MODE_VIEW_1) update_display();
-
   // Now set output voltages
   // Compute the current step's programmed voltage output
   output_voltage = GetStepVoltage(afg1_section, afg1_step_num);
@@ -396,7 +393,7 @@ ProgrammedOutputs AfgTick1() {
     if (get_step_programming(afg1_section, afg1_step_num).b.Sloped ) {
       if (afg1_prev_step_level >= output_voltage) {
         // Slope down
-        delta_voltage = (float) ((afg1_prev_step_level - output_voltage) / afg1_step_width);
+        delta_voltage = (float) (afg1_prev_step_level - output_voltage) / afg1_step_width;
         output_voltage = afg1_prev_step_level - (uint16_t) (delta_voltage * afg1_step_cnt);
       } else if (output_voltage > afg1_prev_step_level) {
         // Slope up
@@ -408,7 +405,6 @@ ProgrammedOutputs AfgTick1() {
     // No reference output when not running
     outputs.ref = 0;
   }
-  clocks = CLOCK_SOURCE_GET_TIMER() - clocks;
 
   afg1_step_level = output_voltage;
   outputs.voltage = output_voltage;
@@ -435,6 +431,7 @@ ProgrammedOutputs AfgTick2() {
 
   float delta_voltage = 0.0;
   uint16_t output_voltage = 0;
+  uint8_t do_recalculate_step_width = 1;
   ProgrammedOutputs outputs;
 
   // step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());
@@ -450,6 +447,7 @@ ProgrammedOutputs AfgTick2() {
       afg2_step_num = (unsigned int) (afg2_stage_address);
       // Reset step counter
       afg2_step_cnt = 0;
+      do_recalculate_step_width = 1;
     }
   } else if (afg2_step_cnt >= afg2_step_width) {
     afg2_step_cnt = 0xFFFFFFFF;
@@ -458,6 +456,7 @@ ProgrammedOutputs AfgTick2() {
     if ((afg2_mode == MODE_ADVANCE)) {
       afg2_prev_step_level = afg2_step_level;
       afg2_mode =  MODE_STOP;
+      do_recalculate_step_width = 1;
     };
 
     if (get_step_programming(afg2_section, afg2_step_num).b.OpModeSTOP) {
@@ -486,10 +485,9 @@ ProgrammedOutputs AfgTick2() {
     if (afg2_mode == MODE_RUN) {
       afg2_step_num = GetNextStep(afg2_section, afg2_step_num);
       afg2_step_cnt = 0;
+      do_recalculate_step_width = 1;
     };
   }
-
-  if (display_mode == DISPLAY_MODE_VIEW_2) update_display();
 
   output_voltage = GetStepVoltage(afg2_section, afg2_step_num);
   outputs.time = get_time_slider_level(afg2_step_num) >> 2;
@@ -523,6 +521,10 @@ ProgrammedOutputs AfgTick2() {
     outputs.all_pulses = 1;
     outputs.pulse1 = get_step_programming(afg2_section, afg2_step_num).b.OutputPulse1;
     outputs.pulse2 = get_step_programming(afg2_section, afg2_step_num).b.OutputPulse2;
+  }
+
+  if (do_recalculate_step_width) {
+    afg2_step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());
   }
 
   return outputs;
