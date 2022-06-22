@@ -43,8 +43,11 @@ inline uint16_t apply_voltage_smoother(uint16_t new_reading, volatile uint16_t *
   } else {
     delta = *state - new_reading;
   }
-  if (delta < 512) {
+  if (delta < 128) {
     // Apply a lot of filtering when the reading is close
+    *state += (new_reading - *state) >> 4;
+  } else if (delta < 512) {
+    // More filtering
     *state += (new_reading - *state) >> 3;
   } else if (delta < 1024) {
     // Less filtering
