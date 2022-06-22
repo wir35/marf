@@ -225,8 +225,8 @@ void JumpToStep2(unsigned int step) {
   afg2_step_num = step;
   afg2_step_cnt = 0;
 
-  if (afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
-    afg1_mode = afg1_prev_mode;
+  if (afg2_mode == MODE_WAIT_HI_Z || afg2_mode == MODE_STAY_HI_Z) {
+    afg2_mode = afg2_prev_mode;
   }
   if (display_mode == DISPLAY_MODE_VIEW_2) update_display();
 
@@ -385,7 +385,7 @@ ProgrammedOutputs AfgTick1() {
   output_voltage = GetStepVoltage(afg1_section, afg1_step_num);
 
   // Set AFG1 time out value
-  outputs.time = GetStepTime(afg1_section, afg1_step_num) >> 2;
+  outputs.time = get_time_slider_level(afg1_step_num) >> 2;
 
   if (afg1_step_cnt < afg1_step_width) {
     // Set AFG1 reference out value
@@ -492,7 +492,7 @@ ProgrammedOutputs AfgTick2() {
   if (display_mode == DISPLAY_MODE_VIEW_2) update_display();
 
   output_voltage = GetStepVoltage(afg2_section, afg2_step_num);
-  outputs.time = GetStepTime(afg2_section, afg2_step_num) >> 2;
+  outputs.time = get_time_slider_level(afg2_step_num) >> 2;
 
   if (afg2_step_cnt < afg2_step_width) {
     outputs.ref = 1023 - (uint16_t) ((afg2_step_cnt << 10) / afg2_step_width);

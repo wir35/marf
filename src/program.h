@@ -125,6 +125,7 @@ inline uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
   return (unsigned int) voltage_level + 0.5;
 };
 
+// Get step time value, either internal or external depending on programming
 inline uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
   float time_level = 0.0;
   uint8_t ext_ban_num = 0;
@@ -142,6 +143,12 @@ inline uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
   };
   return time_level;
 }
+
+// Get step time slider level
+inline uint16_t get_time_slider_level(uint8_t slider_num) {
+  return sliders[slider_num].TLevel;
+}
+
 // Timing constants
 
 // AFG updates its state at 32kHz
