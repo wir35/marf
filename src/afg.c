@@ -421,6 +421,7 @@ ProgrammedOutputs AfgTick1() {
 
   if (do_recalculate_step_width) {
     afg1_step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());
+    if (display_mode == DISPLAY_MODE_VIEW_1) update_display();
   }
 
   return outputs;
@@ -525,6 +526,7 @@ ProgrammedOutputs AfgTick2() {
 
   if (do_recalculate_step_width) {
     afg2_step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());
+    if (display_mode == DISPLAY_MODE_VIEW_2) update_display();
   }
 
   return outputs;
