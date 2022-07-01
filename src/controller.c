@@ -170,6 +170,17 @@ void ControllerMainLoop() {
       controller_job_flags.afg2_tick = 0;
     }
 
+    // Go into modal loops if called for
+
+    if (controller_job_flags.modal_loop == CONTROLLER_MODAL_LOAD) {
+      // Sub loop for load program
+      ControllerLoadProgramLoop(); // only exits when done
+      controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
+    } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SAVE) {
+      ControllerSaveProgramLoop(); // only exits when done
+      controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
+    }
+
   }; // end main loop
 }
 
@@ -364,18 +375,33 @@ void ControllerCheckClear() {
 
   if (clear_counter1 < 30 && clear_counter2 < 30) {
     if (!myButtons.b.ClearUp || !myButtons.b.ClearDown) {
-      if (!myButtons.b.ClearUp) clear_counter1++;
-      else clear_counter1 = 0;
-      if (!myButtons.b.ClearDown) clear_counter2++;
-      else clear_counter2 = 0;
+      if (!myButtons.b.ClearUp) {
+        clear_counter1++;
+      } else {
+        clear_counter1 = 0;
+      }
+      if (!myButtons.b.ClearDown) {
+        clear_counter2++;
+      } else {
+        clear_counter2 = 0;
+      }
     } else {
+      if (clear_counter1) {
+        // Go into LOAD modal in main loop
+        controller_job_flags.modal_loop = CONTROLLER_MODAL_LOAD;
+      } else if (clear_counter2) {
+        // Go into SAVE modal in main loop
+        controller_job_flags.modal_loop = CONTROLLER_MODAL_SAVE;
+      }
+      // Reset counters
       clear_counter1 = 0;
       clear_counter2 = 0;
       TIM_SetCounter(TIM6, 0x00);
       TIM6->CR1 &= ~TIM_CR1_CEN;
     }
   }
-  else if (clear_counter1 == 30 || clear_counter2 == 30) {
+  else if (clear_counter1 >= 30 || clear_counter2 >= 30) {
+    // CLEAR
     // Signal by flashing step leds
     RunClearAnimation();
 
@@ -463,7 +489,6 @@ void ControllerCalibrationLoop() {
         (unsigned char *) &swapped_pulses,
         eprom_memory.pulse_leds_switched.size);
 
-
     __enable_irq();
     adc_resume();
 }
@@ -483,4 +508,100 @@ void ControllerLoadCalibration() {
 
   // Precompute scalers from calibration data
   PrecomputeCalibration();
+}
+
+// Load program loop
+void ControllerLoadProgramLoop() {
+  uint8_t program_num = 0;
+  uButtons previous_switches, switches;
+  previous_switches.value = HC165_ReadSwitches();
+
+  HardStop1();
+  HardStop2();
+  StepLedsLightSingleStep(0);
+
+  while (1) {
+    switches.value = HC165_ReadSwitches();
+    if (switches.value != previous_switches.value) {
+      if (!switches.b.StepRight) {
+        if (program_num >= 15) {
+          program_num = 0;
+        } else {
+          program_num += 1;
+        }
+        StepLedsLightSingleStep(program_num);
+      } else if (!switches.b.StepLeft) {
+        if (program_num == 0) {
+          program_num = 15;
+        } else {
+          program_num -= 1;
+        }
+        StepLedsLightSingleStep(program_num);
+      } else if (!switches.b.ClearUp) {
+        // Load program
+        // TODO(maxlord): load program with sliders
+        CAT25512_read_block(
+            eprom_memory.programs[program_num].start,
+            (unsigned char *) steps,
+            eprom_memory.programs[program_num].size);
+        RunLoadProgramAnimation();
+        return;
+      } else if (!switches.b.Pulse1On || !switches.b.Pulse2On) {
+        // ABORT
+        return;
+      }
+      previous_switches.value = switches.value;
+    } else {
+      delay_ms(15);
+      RunWaitingLoadSaveAnimation();
+    }
+  }
+}
+
+// Save program loop
+void ControllerSaveProgramLoop() {
+  uint8_t program_num = 0;
+  uButtons previous_switches, switches;
+  previous_switches.value = HC165_ReadSwitches();
+
+  HardStop1();
+  HardStop2();
+  StepLedsLightSingleStep(0);
+
+  while (1) {
+    switches.value = HC165_ReadSwitches();
+    if (switches.value != previous_switches.value) {
+      if (!switches.b.StepRight) {
+        if (program_num >= 15) {
+          program_num = 0;
+        } else {
+          program_num += 1;
+        }
+        StepLedsLightSingleStep(program_num);
+      } else if (!switches.b.StepLeft) {
+        if (program_num == 0) {
+          program_num = 15;
+        } else {
+          program_num -= 1;
+        }
+        StepLedsLightSingleStep(program_num);
+      } else if (!switches.b.ClearDown) {
+        // Save program
+        // TODO(maxlord): save program with sliders
+        CAT25512_write_block(
+            eprom_memory.programs[program_num].start,
+            (unsigned char *) steps,
+            eprom_memory.programs[program_num].size);
+        RunSaveProgramAnimation();
+        return;
+      } else if (!switches.b.Pulse1On || !switches.b.Pulse2On) {
+        // Abort save
+        return;
+      }
+      previous_switches.value = switches.value;
+    } else {
+      delay_ms(15);
+      RunWaitingLoadSaveAnimation();
+    }
+  }
 }

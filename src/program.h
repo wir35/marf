@@ -43,8 +43,8 @@ typedef union
 } uStep;
 
 typedef struct {
-    unsigned int VLevel:12;
-    unsigned int TLevel:12;
+    uint16_t VLevel;
+    uint16_t TLevel;
 } StepSliders;
 
 // Main steps and sliders array data

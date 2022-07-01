@@ -6,6 +6,10 @@
 #include "HC165.h"
 #include "afg.h"
 
+#define CONTROLLER_MODAL_NONE 0
+#define CONTROLLER_MODAL_LOAD 1
+#define CONTROLLER_MODAL_SAVE 2
+
 // Controller Job Flags
 // This is state that is passed back and forth between the controller,
 // its main loop, and the few IRQs that need to "do stuff."
@@ -26,6 +30,9 @@ typedef struct  {
   // Flag that the afg2 tick irq has refreshed the output data
   uint8_t afg2_tick;
   ProgrammedOutputs afg2_outputs;
+
+  // Flags that we are going into a modal loop
+  uint8_t modal_loop;
 } ControllerJobFlags;
 
 extern volatile ControllerJobFlags controller_job_flags;
@@ -54,5 +61,9 @@ void ControllerCheckClear();
 void ControllerCalibrationLoop();
 
 void ControllerLoadCalibration();
+
+void ControllerLoadProgramLoop();
+
+void ControllerSaveProgramLoop();
 
 #endif

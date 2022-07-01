@@ -2,7 +2,9 @@
 #define __EPROM_H
 
 #include <stdint.h>
+
 #include "CAT25512.h"
+#include "program.h"
 
 // Typedef for one section of eprom memory layout
 typedef struct {
@@ -21,6 +23,11 @@ typedef struct {
   // Analog calibration data
   MemoryRange analog_cal_data;
 } EpromMemory;
+
+typedef struct {
+  uStep steps[32];
+  StepSliders sliders[32];
+} SavedProgram;
 
 extern EpromMemory eprom_memory;
 

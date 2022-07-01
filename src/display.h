@@ -26,10 +26,9 @@ extern volatile uDisplayUpdateFlag display_update_flags;
 #define DISPLAY_MODE_VIEW_2       1
 #define DISPLAY_MODE_EDIT_1       2
 #define DISPLAY_MODE_EDIT_2       3
-#define DISPLAY_MODE_SAVE_1       4
-#define DISPLAY_MODE_SAVE_2       5
-#define DISPLAY_MODE_LOAD_1       6
-#define DISPLAY_MODE_LOAD_2       7
+
+#define DISPLAY_MODE_SAVE         4
+#define DISPLAY_MODE_LOAD         5
 
 // Current display mode
 extern volatile uint8_t display_mode;
@@ -55,7 +54,7 @@ void DisplayAllInitialize();
 // Update display leds in programming section
 void UpdateModeSectionLeds();
 
-// Update step leds
+// Update step leds for normal op state
 void UpdateStepSectionLeds();
 
 // Flush updates out to led shift registers
@@ -70,5 +69,10 @@ void RunCalibrationAnimation();
 // Flash leds for save and load program
 void RunSaveProgramAnimation();
 void RunLoadProgramAnimation();
+
+void RunWaitingLoadSaveAnimation();
+
+// Light a single step
+void StepLedsLightSingleStep(uint8_t step);
 
 #endif
