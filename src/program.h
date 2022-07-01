@@ -135,14 +135,22 @@ inline uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
 
   if (steps[step_num].b.TimeSource) {
     // Step time is set externally
-    ext_ban_num = (uint8_t) sliders[slider_num].TLevel >> 10;
-    time_level = read_calibrated_add_data_uint16(ext_ban_num);
+    ext_ban_num = sliders[slider_num].TLevel >> 10;
+    time_level = read_calibrated_add_data_float(ext_ban_num);
   } else {
     // Step time is set on panel
     time_level = sliders[slider_num].TLevel;
   };
+
+  // Clamp if smoothing or something has gone awry
+  if (time_level > 4095.0) {
+    time_level = 4095.0;
+  } else if (time_level < 0.0) {
+    time_level = 0.0;
+  }
+
   return time_level;
-}
+};
 
 // Get step time slider level
 inline uint16_t get_time_slider_level(uint8_t slider_num) {
