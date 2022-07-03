@@ -1,6 +1,8 @@
 #include "controller.h"
 
+#include <string.h>  // memcpy
 #include <stm32f4xx.h>
+
 #include "display.h"
 #include "afg.h"
 #include "leds_step.h"
@@ -240,28 +242,7 @@ void ControllerProcessStageAddressSwitches(uButtons * key) {
     DisableContinuousStageAddress2();
   }
 
-  // Save and load
-
-  // Either display switch active
-  uint8_t display_switches = (!key->b.StageAddress1Display || !key->b.StageAddress2Display);
-
-  if (!key->b.ClearDown && display_switches) {
-    // Either display switch down plus clear down
-    // Save program 0
-    CAT25512_write_block(
-        eprom_memory.programs[0].start,
-        (unsigned char *) steps,
-        eprom_memory.programs[0].size);
-    RunSaveProgramAnimation();
-  } else if (!key->b.ClearUp && display_switches) {
-    // Either display switch down plus clear up
-    // Load program 0
-    CAT25512_read_block(
-        eprom_memory.programs[0].start,
-        (unsigned char *) steps,
-        eprom_memory.programs[0].size);
-    RunLoadProgramAnimation();
-  } else if (!key->b.ClearUp || !key->b.ClearDown) {
+  if (!key->b.ClearUp || !key->b.ClearDown) {
     // Wait for long press on clear
     InitClear_Timer();
   }
@@ -408,12 +389,7 @@ void ControllerCheckClear() {
     TIM_SetCounter(TIM6, 0x00);
     TIM6->CR1 &= ~TIM_CR1_CEN;
 
-    if (clear_counter1 == 30) {
-      InitProgram();
-      HardStop1();
-      HardStop2();
-    }
-    else if (clear_counter2 == 30) {
+    if (clear_counter1 == 30 || clear_counter2 == 30) {
       InitProgram();
       HardStop1();
       HardStop2();
@@ -512,6 +488,7 @@ void ControllerLoadCalibration() {
 
 // Load program loop
 void ControllerLoadProgramLoop() {
+  SavedProgram saved_program = {};
   uint8_t program_num = 0;
   uButtons previous_switches, switches;
   previous_switches.value = HC165_ReadSwitches();
@@ -538,16 +515,31 @@ void ControllerLoadProgramLoop() {
         }
         StepLedsLightSingleStep(program_num);
       } else if (!switches.b.ClearUp) {
-        // Load program
-        // TODO(maxlord): load program with sliders
+        // Load program. Takes a little while.
+        __disable_irq();
+
+        // Read from EPROM into temporary saved_program
         CAT25512_read_block(
             eprom_memory.programs[program_num].start,
-            (unsigned char *) steps,
+            (unsigned char *) &saved_program,
             eprom_memory.programs[program_num].size);
+
+        // Copy from saved_program to steps and sliders
+        memcpy((void *) steps, (void *) saved_program.steps, sizeof(steps));
+        memcpy((void *) sliders, (void *) saved_program.sliders, sizeof(sliders));
+        pin_all_sliders();
+
+        // Cute little animation
         RunLoadProgramAnimation();
+        display_mode = DISPLAY_MODE_VIEW_1;
+        __enable_irq();
         return;
-      } else if (!switches.b.Pulse1On || !switches.b.Pulse2On) {
-        // ABORT
+      } else if (!switches.b.Pulse1On
+          || !switches.b.Pulse2On
+          || !switches.b.Pulse1Off
+          || !switches.b.Pulse2Off) {
+        // Abort load
+        display_mode = DISPLAY_MODE_VIEW_1;
         return;
       }
       previous_switches.value = switches.value;
@@ -561,6 +553,7 @@ void ControllerLoadProgramLoop() {
 // Save program loop
 void ControllerSaveProgramLoop() {
   uint8_t program_num = 0;
+  SavedProgram saved_program = {};
   uButtons previous_switches, switches;
   previous_switches.value = HC165_ReadSwitches();
 
@@ -586,16 +579,30 @@ void ControllerSaveProgramLoop() {
         }
         StepLedsLightSingleStep(program_num);
       } else if (!switches.b.ClearDown) {
-        // Save program
-        // TODO(maxlord): save program with sliders
+        // Save program. Takes a little while.
+        __disable_irq();
+
+        // Copy from steps and sliders to temp saved_program
+        memcpy((void *) saved_program.steps, (void *) steps, sizeof(steps));
+        memcpy((void *) saved_program.sliders, (void *) sliders, sizeof(sliders));
+
+        // Write the temp saved program to the EPROM
         CAT25512_write_block(
             eprom_memory.programs[program_num].start,
-            (unsigned char *) steps,
+            (unsigned char *) &saved_program,
             eprom_memory.programs[program_num].size);
+
+        // Run cute animation
         RunSaveProgramAnimation();
+        display_mode = DISPLAY_MODE_VIEW_1;
+        __enable_irq();
         return;
-      } else if (!switches.b.Pulse1On || !switches.b.Pulse2On) {
+      } else if (!switches.b.Pulse1On
+          || !switches.b.Pulse2On
+          || !switches.b.Pulse1Off
+          || !switches.b.Pulse2Off) {
         // Abort save
+        display_mode = DISPLAY_MODE_VIEW_1;
         return;
       }
       previous_switches.value = switches.value;

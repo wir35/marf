@@ -34,24 +34,35 @@ typedef union
     unsigned int TimeSource:1;
     unsigned int OutputPulse1:1;
     unsigned int OutputPulse2:1;
-    unsigned int WaitVoltageSlider:1;
-    unsigned int WaitTimeSlider:1;
-    unsigned int Swing:1;
-    unsigned int NU4:1;
+    unsigned int Unused:4;
   } b;
   unsigned char val[3];
 } uStep;
 
+// Slider positions
 typedef struct {
     uint16_t VLevel;
     uint16_t TLevel;
 } StepSliders;
 
+// Book keeping for which sliders are pinned after loading a stored program.
+// This is kept little endian (so LSB is slider 0 and MSB is slider 31).
+// High bit means the slider reading is higher than the pin.
+// Low bit means the slider reading is lower than the pin value.
+// When both high and low bits are unset then the slider is un-pinned.
+typedef struct {
+  uint32_t high;
+  uint32_t low;
+} PinnedSliders;
+
 // Main steps and sliders array data
 // This is extern visible so that we can inline fast access to it, but
 // DO NOT ACCESS IT DIRECTLY from any other source file.
 extern volatile uStep steps[32];
+
 extern volatile StepSliders sliders[32];
+extern volatile PinnedSliders voltage_slider_pins;
+extern volatile PinnedSliders time_slider_pins;
 
 void InitProgram();
 
@@ -201,6 +212,18 @@ void ApplyProgrammingSwitches(uint8_t section, uint8_t step_num, uButtons *switc
 
 void ClearProgram(uint8_t section);
 
-void PinSliders();
+inline void pin_all_sliders() {
+  voltage_slider_pins.high = 0xFFFFFFFF;
+  voltage_slider_pins.low = 0xFFFFFFFF;
+  time_slider_pins.high = 0xFFFFFFFF;
+  time_slider_pins.low = 0xFFFFFFFF;
+}
+
+inline void unpin_all_sliders() {
+  voltage_slider_pins.high = 0x00000000;
+  voltage_slider_pins.low = 0x00000000;
+  time_slider_pins.high = 0x00000000;
+  time_slider_pins.low = 0x00000000;
+}
 
 #endif

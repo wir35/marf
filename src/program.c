@@ -9,6 +9,8 @@
 // Main step programming
 volatile uStep steps[32];
 volatile StepSliders sliders[32];
+volatile PinnedSliders voltage_slider_pins;
+volatile PinnedSliders time_slider_pins;
 
 void InitProgram() {
   uStep clear_step = {{ 0x00, 0x00, 0x00 }};
@@ -23,38 +25,47 @@ void InitProgram() {
     steps[s] = clear_step;
     sliders[s] = clear_slider;
   };
+  unpin_all_sliders();
 }
 
+// True if slider is pinned after reloading a program
+inline static uint8_t is_slider_pinned(const volatile PinnedSliders* slider_pins, uint8_t slider_num) {
+  uint32_t check_bit = 1 << slider_num;
+  return (slider_pins->high & check_bit) || (slider_pins->low & check_bit);
+}
+
+// Write new voltage slider value, un-pinning slider if needed
 void WriteVoltageSlider(uint8_t slider_num, uint32_t new_adc_reading) {
   static volatile uint16_t voltage_smoothers[32];
 
   uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff);
   uint16_t smoothed = apply_voltage_smoother(adc_reading << 4, &voltage_smoothers[slider_num]);
 
-  if (steps[slider_num].b.WaitVoltageSlider) {
-    if (smoothed >> 4 == sliders[slider_num].VLevel >> 4) {
-      // Unpin the slider
-      steps[slider_num].b.WaitVoltageSlider = 0;
-      sliders[slider_num].VLevel = smoothed;
-    }
-  } else {
+  if (smoothed >= sliders[slider_num].VLevel) {
+    voltage_slider_pins.high &= ~(1UL << slider_num);
+  }
+  if (smoothed <= sliders[slider_num].VLevel) {
+    voltage_slider_pins.low &= ~(1UL << slider_num);
+  }
+  if (!is_slider_pinned(&voltage_slider_pins, slider_num)) {
     sliders[slider_num].VLevel = smoothed;
   }
 }
 
+// Write new time slider value, un-pinning slider if needed
 void WriteTimeSlider(uint8_t slider_num, uint32_t new_adc_reading) {
   static volatile uint16_t voltage_smoothers[32];
 
   uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff) << 4;
   uint16_t smoothed = apply_voltage_smoother(adc_reading, &voltage_smoothers[slider_num]);
 
-  if (steps[slider_num].b.WaitTimeSlider) {
-    if (smoothed >> 4 == sliders[slider_num].TLevel >> 4) {
-      // Unpin the slider
-      steps[slider_num].b.WaitTimeSlider = 0;
-      sliders[slider_num].TLevel = smoothed;
-    }
-  } else {
+  if (smoothed >> 4 >= sliders[slider_num].TLevel >> 4) {
+    time_slider_pins.high &= ~(1UL << slider_num);
+  }
+  if (smoothed >> 4 <= sliders[slider_num].TLevel >> 4) {
+    time_slider_pins.low &= ~(1UL << slider_num);
+  }
+  if (!is_slider_pinned(&time_slider_pins, slider_num)) {
     sliders[slider_num].TLevel = smoothed;
   }
 }
@@ -242,10 +253,3 @@ void ApplyProgrammingSwitches(uint8_t section, uint8_t step_num, uButtons* switc
   };
 }
 
-// Set WaitX on all voltage and time sliders
-void PinSliders() {
-  for(uint8_t cnt = 0; cnt < 32; cnt++) {
-    steps[cnt].b.WaitVoltageSlider = 1;
-    steps[cnt].b.WaitTimeSlider = 1;
-  };
-}

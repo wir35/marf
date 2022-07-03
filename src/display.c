@@ -214,22 +214,102 @@ void RunCalibrationAnimation() {
   counter += 1;
 }
 
+// After saving a program, flash all mode leds in the programming section down
 void RunSaveProgramAnimation() {
+  // Start
   steps_leds_lit = 0xFFFF;
-  for (uint8_t l = 0; l < 16; l++) {
-    LED_STEP_SendWord(steps_leds_lit);
-    steps_leds_lit &= ~(1UL << l);
-    delay_ms(10);
-  }
+  LED_STEP_SendWord(steps_leds_lit);
+  mode_leds_lit.value[0] = 0xFF;
+  mode_leds_lit.value[1] = 0xFF;
+  mode_leds_lit.value[2] = 0xFF;
+  mode_leds_lit.value[3] = 0xFF;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  // Flash first row
+  mode_leds_lit.b.Quantization = 0;
+  mode_leds_lit.b.Integration = 0;
+  mode_leds_lit.b.VoltageFull = 0;
+  mode_leds_lit.b.VoltageSource = 0;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  delay_ms(100);
+  // Second row
+  mode_leds_lit.b.Voltage0 = 0;
+  mode_leds_lit.b.Voltage2 = 0;
+  mode_leds_lit.b.Voltage4 = 0;
+  mode_leds_lit.b.Voltage6 = 0;
+  mode_leds_lit.b.Voltage8 = 0;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  delay_ms(100);
+  // Third row
+  mode_leds_lit.b.OPStop = 0;
+  mode_leds_lit.b.OPSustain = 0;
+  mode_leds_lit.b.OPEnable = 0;
+  mode_leds_lit.b.CycleFirst = 0;
+  mode_leds_lit.b.CycleLast = 0;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  delay_ms(100);
+  // Fourth row
+  mode_leds_lit.b.TimeRange0 = 0;
+  mode_leds_lit.b.TimeRange1 = 0;
+  mode_leds_lit.b.TimeRange0 = 0;
+  mode_leds_lit.b.TimeRange1 = 0;
+  mode_leds_lit.b.TimeSource = 0;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  delay_ms(100);
+  // Reset all off
+  mode_leds_lit.value[0] = 0xFF;
+  mode_leds_lit.value[1] = 0xFF;
+  mode_leds_lit.value[2] = 0xFF;
+  mode_leds_lit.value[3] = 0xFF;
+  LEDS_modes_SendStruct(&mode_leds_lit);
 }
 
+// After saving a program, flash all mode leds in the programming section up
 void RunLoadProgramAnimation() {
+  // Start
   steps_leds_lit = 0xFFFF;
-  for (uint8_t l = 15; l > 0; l--) {
-    LED_STEP_SendWord(steps_leds_lit);
-    steps_leds_lit &= ~(1UL << l);
-    delay_ms(10);
-  }
+  LED_STEP_SendWord(steps_leds_lit);
+  mode_leds_lit.value[0] = 0xFF;
+  mode_leds_lit.value[1] = 0xFF;
+  mode_leds_lit.value[2] = 0xFF;
+  mode_leds_lit.value[3] = 0xFF;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  // Fourth row
+  mode_leds_lit.b.TimeRange0 = 0;
+  mode_leds_lit.b.TimeRange1 = 0;
+  mode_leds_lit.b.TimeRange0 = 0;
+  mode_leds_lit.b.TimeRange1 = 0;
+  mode_leds_lit.b.TimeSource = 0;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  delay_ms(100);
+  // Third row
+  mode_leds_lit.b.OPStop = 0;
+  mode_leds_lit.b.OPSustain = 0;
+  mode_leds_lit.b.OPEnable = 0;
+  mode_leds_lit.b.CycleFirst = 0;
+  mode_leds_lit.b.CycleLast = 0;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  delay_ms(100);
+  // Second row
+  mode_leds_lit.b.Voltage0 = 0;
+  mode_leds_lit.b.Voltage2 = 0;
+  mode_leds_lit.b.Voltage4 = 0;
+  mode_leds_lit.b.Voltage6 = 0;
+  mode_leds_lit.b.Voltage8 = 0;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  delay_ms(100);
+  // Flash first row
+  mode_leds_lit.b.Quantization = 0;
+  mode_leds_lit.b.Integration = 0;
+  mode_leds_lit.b.VoltageFull = 0;
+  mode_leds_lit.b.VoltageSource = 0;
+  LEDS_modes_SendStruct(&mode_leds_lit);
+  delay_ms(100);
+  // Reset all off
+  mode_leds_lit.value[0] = 0xFF;
+  mode_leds_lit.value[1] = 0xFF;
+  mode_leds_lit.value[2] = 0xFF;
+  mode_leds_lit.value[3] = 0xFF;
+  LEDS_modes_SendStruct(&mode_leds_lit);
 }
 
 void StepLedsLightSingleStep(uint8_t step) {
