@@ -64,13 +64,30 @@ Afg Section Shift (unexpanded units only)
 4. Press Stage Address Display 2 + Stage No Left to move afg2 back to steps [1-16].
 
 
-Save and Load Program
+Save Program
 
-1. This version supports saving and loading a single program.
-2. Slider data is not saved.
-3. Press Stage Address Display (1 or 2) + Clear Down to save the current program.
-4. Press Stage Address Display (1 or 2) + Clear Up to load the current program.
-5. Save and load can be used while the clock is running!
+1. This version supports saving and loading 16 programs (even with expander).
+2. Slider data is always saved along with the program.
+3. Press the Clear switch _down_ briefly to enter save mode. 
+4. The pulse leds will toggle to indicate that you are in save mode.
+5. To abort saving then simply move any one of the pulse switches.
+6. Use the Stage No switch to select one of the 16 memory locations.
+7. Press Clear switch _down_ again briefly to save the program.
+8. Leds with flash downwards when the program is saved.
+9. Note that the marf stops running while saving a program.
+
+
+Load Program
+
+1. Press the Clear switch _up_ briefly to enter load mode.
+2. The pulse leds will toggle to indicate that you are in load mode.
+3. To abort loading then simply move any one of the pulse switches.
+4. Use the Stage No switch to select one of the 16 memory locations.
+5. Press Clear switch _up_ again briefly to load the program.
+6. Leds will flash upwards when the program is loaded.
+7. Note that the marf stops running when loading a program.
+8. Once the program is loaded, all sliders will be "pinned" at their saved value.
+9. To restore slider activity, the slider must be moved through the saved value.
 
 
 Pulse Tricks
