@@ -120,14 +120,11 @@ void ControllerMainLoop() {
     ControllerApplyProgrammingSwitches(&switches);
 
     // Update panel state
-    if (display_update_flags.b.MainDisplay) {
-      UpdateModeSectionLeds();
-      display_update_flags.b.MainDisplay = 0;
-    };
-    if (display_update_flags.b.StepsDisplay) {
-      UpdateStepSectionLeds();
-      display_update_flags.b.StepsDisplay = 0;
-    };
+    UpdateModeSectionLeds();
+    display_update_flags.b.MainDisplay = 0;
+    UpdateStepSectionLeds();
+    display_update_flags.b.StepsDisplay = 0;
+
 
     // Flush LEDs every 20ms.
     // Shifting out to the leds is kind of slow, so rate limit the update to 50 Hz.
@@ -135,11 +132,6 @@ void ControllerMainLoop() {
       FlushLedUpdates();
       leds_update_time = get_millis();
     }
-
-    // Process Stop and Start signals.
-    // Stop and start have their own debouncing/edge detection logic reading GPIO directly.
-    // This bypasses the controller and goes straight to afg.
-    ProcessStopStart(GPIO_ReadInputData(GPIOB));
 
     // Shift adc mux if time
     if (controller_job_flags.adc_mux_shift_out) {
@@ -206,28 +198,31 @@ void ControllerApplyProgrammingSwitches(uButtons * key) {
 }
 
 void ControllerProcessStageAddressSwitches(uButtons * key) {
+  PulseInputs signals1 = {}, signals2 = {};
 
   // Only do one of reset, strobe or advance
   if (!key->b.StageAddress1Reset) {
     DoReset1();
     update_display();
   } else if (!key->b.StageAddress1PulseSelect) {
-    DoStrobe1();
-    update_display();
+    signals1.strobe = 1;
+    ProcessModeChanges1(signals1);
   } else if (!key->b.StageAddress1Advance) {
-    DoAdvance1();
-    update_display();
+    signals1.start = 1;
+    signals1.stop = 1;
+    ProcessModeChanges1(signals1);
   }
 
   if (!key->b.StageAddress2Reset) {
     DoReset2();
     update_display();
   } else if ( (!key->b.StageAddress2PulseSelect)) {
-    DoStrobe2();
-    update_display();
+    signals2.strobe = 1;
+    ProcessModeChanges2(signals2);
   } else if (!key->b.StageAddress2Advance) {
-    DoAdvance2();
-    update_display();
+    signals2.start = 1;
+    signals2.stop = 1;
+    ProcessModeChanges2(signals2);
   };
 
   if (!key->b.StageAddress1ContiniousSelect) {

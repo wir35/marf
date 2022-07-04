@@ -164,7 +164,7 @@ void ADCResume(void) {
   NVIC_EnableIRQ(ADC_IRQn);
 };
 
-// External interrupts init for start and stop
+// External interrupts init for start, stop and strobe
 void mInterruptInit(void) {
   GPIO_InitTypeDef mGPIO;
   EXTI_InitTypeDef mInt;
@@ -173,7 +173,7 @@ void mInterruptInit(void) {
   RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
 
   mGPIO.GPIO_Mode = GPIO_Mode_IN;
-  mGPIO.GPIO_Pin = GPIO_Pin_0|GPIO_Pin_1|GPIO_Pin_5|/*GPIO_Pin_6|*/GPIO_Pin_7/*|GPIO_Pin_8*/;
+  mGPIO.GPIO_Pin = GPIO_Pin_0|GPIO_Pin_1|GPIO_Pin_5|GPIO_Pin_6|GPIO_Pin_7|GPIO_Pin_8;
   mGPIO.GPIO_PuPd = GPIO_PuPd_NOPULL;
   mGPIO.GPIO_Speed = GPIO_Speed_100MHz;
   GPIO_Init(GPIOB, &mGPIO);
@@ -181,32 +181,32 @@ void mInterruptInit(void) {
   SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource0);
   SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource1);
   SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource5);
-  // SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource6);
+  SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource6);
   SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource7);
-  // SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource8);
+  SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, GPIO_PinSource8);
 
   // START-STOP LINE INIT Interrupt
   EXTI_DeInit();
-  mInt.EXTI_Line = EXTI_Line0|EXTI_Line1|EXTI_Line5|/*EXTI_Line6|*/EXTI_Line7/*|EXTI_Line8*/;
+  mInt.EXTI_Line = EXTI_Line0|EXTI_Line1|EXTI_Line5|EXTI_Line6|EXTI_Line7|EXTI_Line8;
   mInt.EXTI_Mode = EXTI_Mode_Interrupt;
   mInt.EXTI_Trigger = EXTI_Trigger_Rising;
   mInt.EXTI_LineCmd = ENABLE;
   EXTI_Init(&mInt);
 
   NVIC_InitStructure.NVIC_IRQChannel = EXTI0_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority 	= 0x00;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority 	= 0x0F; // lower
   NVIC_InitStructure.NVIC_IRQChannelSubPriority 				= 0x00; 
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; 
   NVIC_Init(&NVIC_InitStructure);
 
   NVIC_InitStructure.NVIC_IRQChannel = EXTI1_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority 	= 0xF0;
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority 	= 0x0F; // lower
   NVIC_InitStructure.NVIC_IRQChannelSubPriority 				= 0x00; 
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; 
   NVIC_Init(&NVIC_InitStructure);
 
   NVIC_InitStructure.NVIC_IRQChannel = EXTI9_5_IRQn;
-  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority 	= 0x00; 
+  NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority 	= 0x00; // highest
   NVIC_InitStructure.NVIC_IRQChannelSubPriority 				= 0x00; 
   NVIC_InitStructure.NVIC_IRQChannelCmd = ENABLE; 
   NVIC_Init(&NVIC_InitStructure);
@@ -214,38 +214,73 @@ void mInterruptInit(void) {
   EXTI_ClearITPendingBit(EXTI_Line0);
   EXTI_ClearITPendingBit(EXTI_Line1);
   EXTI_ClearITPendingBit(EXTI_Line5);
+  EXTI_ClearITPendingBit(EXTI_Line6);
+  EXTI_ClearITPendingBit(EXTI_Line7);
+  EXTI_ClearITPendingBit(EXTI_Line8);
+};
+
+// General handler for any and all of the start, stop and strobe interrupt signals.
+// The logic is more robust if all of the signals are coalesced and processed together.
+void HandlePulseInterruptSignals() {
+  static uint32_t pulse1_handled_time = 0;
+  static uint32_t pulse2_handled_time = 0;
+  uint32_t now = get_millis();
+
+  // Read all 3 GPIO pins directly right now
+  volatile PulseInputs pulses1 = get_afg1_pulse_inputs();
+  volatile PulseInputs pulses2 = get_afg2_pulse_inputs();
+
+  // Inhibit pulse handling for 2ms after anything changes
+  if (now - pulse1_handled_time > 2) {
+    // Debouncing ... don't trigger if the switches might have bounced back to low values
+    if (pulses1.start || pulses1.stop || pulses1.strobe) {
+      ProcessModeChanges1(pulses1);
+      pulse1_handled_time = now;
+    }
+  } else if (now < pulse1_handled_time) {
+    // In case of millis overflow
+    pulse1_handled_time = 0;
+  }
+  if (now - pulse2_handled_time > 2) {
+    // Debouncing
+    if (pulses2.start || pulses2.stop || pulses2.strobe) {
+      ProcessModeChanges2(pulses2);
+      pulse2_handled_time = now;
+    }
+  } else if (now < pulse2_handled_time) {
+    pulse2_handled_time = 0;
+  }
+
+  // Clear all interrupt flags
+
+  EXTI_ClearITPendingBit(EXTI_Line8);
+  EXTI_ClearITPendingBit(EXTI_Line0);
+  EXTI_ClearITPendingBit(EXTI_Line5);
+
+  EXTI_ClearITPendingBit(EXTI_Line6);
+  EXTI_ClearITPendingBit(EXTI_Line1);
   EXTI_ClearITPendingBit(EXTI_Line7);
 };
 
 // AFG1 stop interrupt
 void EXTI0_IRQHandler() {
-  // Handled in the main loop
-  // Not used for anything
-  EXTI_ClearITPendingBit(EXTI_Line0);	
+  // AFG1 stop signal rising edge
+  delay_us(2);
+  HandlePulseInterruptSignals();
 };
 
 // AFG2 stop interrupt
 void EXTI1_IRQHandler() {
-  // Handled in the main loop
-  // Not used for anything
-  EXTI_ClearITPendingBit(EXTI_Line1);
+  // AFG2 stop signal rising edge
+  delay_us(2);
+  HandlePulseInterruptSignals();
 };
 
-
-// Interrupt handler for strobe signals.
+// Interrupt handler for start and strobe signals both sections.
 void EXTI9_5_IRQHandler() {
-  if (EXTI->PR & (1<<5)) {
-    // Strobe signal 1 high
-    DoStrobe1();
-    EXTI_ClearITPendingBit(EXTI_Line5);
-  };
-
-  if (EXTI->PR & (1<<7)) {
-    // Strobe 2 signal high
-    DoStrobe2();
-    EXTI_ClearITPendingBit(EXTI_Line7);
-  };
-};
+  delay_us(2);
+  HandlePulseInterruptSignals();
+}
 
 /*
 	Timer interrupt handler for AFG1 clock.

@@ -17,14 +17,13 @@ extern volatile uint32_t afg1_step_width, afg2_step_width;
 // Step counters
 extern volatile uint32_t afg1_step_cnt, afg2_step_cnt;
 
-// Sequencer modes
-#define MODE_RUN  0
-#define MODE_WAIT 1
-#define MODE_STOP 2
-#define MODE_WAIT_STROBE  3
-#define MODE_WAIT_HI_Z    4
-#define MODE_STAY_HI_Z    5
-#define MODE_ADVANCE      6
+// AFG modes
+
+#define MODE_STOP 0       // Stopped
+#define MODE_RUN  1       // Started and running
+#define MODE_WAIT 2       // Continuous strobe mode. Better name?
+#define MODE_WAIT_HI_Z 3  // Running, but holding on enable step
+#define MODE_STAY_HI_Z 4  // Running, but holding on sustain step
 
 // Values of programmed output voltages
 typedef struct {
@@ -43,15 +42,6 @@ extern volatile unsigned char afg1_prev_mode;
 extern volatile unsigned char afg2_prev_mode;
 extern volatile unsigned char afg1_advance;
 extern volatile unsigned char afg2_advance;
-
-// Modes for start condition
-#define START_MODE_ZERO       0
-#define START_MODE_WAIT_HI_Z  1
-#define START_MODE_HI_Z       2
-
-// Current mode for start condition
-extern volatile unsigned char afg1_start_mode;
-extern volatile unsigned char afg2_start_mode;
 
 // The voltage level of the current step
 extern volatile unsigned int afg1_step_level;
@@ -86,59 +76,37 @@ void AfgAllInitialize();
 void JumpToStep1(unsigned int step);
 void JumpToStep2(unsigned int step);
 
-// Clock mode control
-void ProcessStopStart(uint16_t gpiob_data);
+// Clock mode control from start, stop, strobe interrupts
+void ProcessPulseInputs1();
+void ProcessModeChanges1();
 
-// Handle stop signal
-void DoStop1();
-void DoStop2();
-
-// Handle start signal
-void DoStart1();
-void DoStart2();
+void ProcessPulseInputs2();
+void ProcessModeChanges2();
 
 // Check timer after handling start signal
 uint8_t CheckStart1();
 uint8_t CheckStart2();
 
-// Handle strobe signal
-void DoStrobe1();
-void DoStrobe2();
-
 inline void HardStop1() {
   afg1_mode = MODE_STOP;
   afg1_step_num = 0;
+  afg1_step_cnt = 0xFFFFFFFF;
 }
 
 inline void HardStop2() {
   afg2_mode = MODE_STOP;
   afg2_step_num = 0;
-}
-
-inline void DoAdvance1() {
-  if (afg1_mode != MODE_WAIT) {
-    if (afg1_mode == MODE_STOP) afg1_mode = MODE_ADVANCE;
-    JumpToStep1(GetNextStep(afg1_section, afg1_step_num));
-  }
-}
-
-inline void DoAdvance2() {
-  if (afg2_mode != MODE_WAIT) {
-    if (afg2_mode == MODE_STOP) afg2_mode = MODE_ADVANCE;
-    JumpToStep2(GetNextStep(afg2_section, afg2_step_num));
-  }
+  afg2_step_cnt = 0xFFFFFFFF;
 }
 
 inline void DoReset1() {
   if (afg1_mode != MODE_WAIT) {
-    if (afg1_mode == MODE_STOP) afg1_mode = MODE_ADVANCE;
     JumpToStep1(0);
   }
 }
 
 inline void DoReset2() {
   if (afg2_mode != MODE_WAIT) {
-    if (afg2_mode == MODE_STOP) afg2_mode = MODE_ADVANCE;
     JumpToStep2(0);
   }
 }

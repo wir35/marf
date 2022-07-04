@@ -13,6 +13,13 @@
 #define ADC_STAGEADDRESS_Ch_1 0x06
 #define ADC_STAGEADDRESS_Ch_2 0x07
 
+// Values of pulse inputs
+typedef struct {
+  uint8_t start;
+  uint8_t stop;
+  uint8_t strobe;
+} PulseInputs;
+
 // Additional analog data exposed globally for now
 
 extern volatile uint16_t add_data[8];
@@ -75,5 +82,23 @@ void WriteOtherCv(uint8_t cv_num, uint32_t new_adc_reading);
 void PrecomputeCalibration(void);
 
 void SetVoltageRange(uDipConfig dip_config);
+
+// Return the current level of pulse inputs direct from the gpio pins
+inline PulseInputs get_afg1_pulse_inputs() {
+  PulseInputs pulse_inputs = {};
+  pulse_inputs.start  = (GPIOB->IDR & GPIO_Pin_8) != 0;  // PB8
+  pulse_inputs.stop   = (GPIOB->IDR & GPIO_Pin_0) != 0;  // PB0
+  pulse_inputs.strobe = (GPIOB->IDR & GPIO_Pin_5) != 0;  // PB5
+  return pulse_inputs;
+}
+
+// Return the current level of pulse inputs direct from the gpio pins
+inline PulseInputs get_afg2_pulse_inputs() {
+  PulseInputs pulse_inputs = {};
+  pulse_inputs.start  = (GPIOB->IDR & GPIO_Pin_6) != 0;  // PB6
+  pulse_inputs.stop   = (GPIOB->IDR & GPIO_Pin_1) != 0;  // PB1
+  pulse_inputs.strobe = (GPIOB->IDR & GPIO_Pin_7) != 0;  // PB7
+  return pulse_inputs;
+}
 
 #endif

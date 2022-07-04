@@ -78,7 +78,7 @@ void UpdateLedsProgramMode(uLeds* mLeds, uStep* step) {
 void UpdateModeSectionLeds() {
 
   // AFG1 mode LEDs
-  if (afg1_mode == MODE_RUN || afg1_mode == MODE_ADVANCE) {
+  if (afg1_mode == MODE_RUN) {
     mode_leds_lit.b.Seq1Run &= 0;
   } else if (afg1_mode == MODE_WAIT  || afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
     mode_leds_lit.b.Seq1Wait &= 0;
@@ -87,7 +87,7 @@ void UpdateModeSectionLeds() {
   };
 
   // AFG2 mode LEDs
-  if (afg2_mode == MODE_RUN || afg2_mode == MODE_ADVANCE) {
+  if (afg2_mode == MODE_RUN) {
     mode_leds_lit.b.Seq2Run &= 0;
   } else if (afg2_mode == MODE_WAIT || afg2_mode == MODE_WAIT_HI_Z  || afg2_mode == MODE_STAY_HI_Z) {
     mode_leds_lit.b.Seq2Wait &= 0;
