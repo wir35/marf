@@ -70,22 +70,22 @@ Save Program
 2. Slider data is always saved along with the program.
 3. Press the Clear switch _down_ briefly to enter save mode. 
 4. The pulse leds will toggle to indicate that you are in save mode.
-5. To abort saving then simply move any one of the pulse switches.
+5. To abort saving, press one of the Display switches.
 6. Use the Stage No switch to select one of the 16 memory locations.
 7. Press Clear switch _down_ again briefly to save the program.
 8. Leds with flash downwards when the program is saved.
-9. Note that the marf stops running while saving a program.
+9. Note that the marf does not stop running while saving a program.
 
 
 Load Program
 
 1. Press the Clear switch _up_ briefly to enter load mode.
 2. The pulse leds will toggle to indicate that you are in load mode.
-3. To abort loading then simply move any one of the pulse switches.
+3. To abort loading, press one of the Display switches.
 4. Use the Stage No switch to select one of the 16 memory locations.
 5. Press Clear switch _up_ again briefly to load the program.
 6. Leds will flash upwards when the program is loaded.
-7. Note that the marf stops running when loading a program.
+7. Note that the marf does not stop running when loading a program.
 8. Once the program is loaded, all sliders will be "pinned" at their saved value.
 9. To restore slider activity, the slider must be moved through the saved value.
 

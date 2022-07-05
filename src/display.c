@@ -322,18 +322,18 @@ void StepLedsLightSingleStep(uint8_t step) {
 // Just toggles pulse leds while waiting for step selection.
 
 void RunWaitingLoadSaveAnimation() {
-  static uint8_t counter = 0;
+  static uint16_t counter = 0;
 
   mode_leds_lit.value[0] = 0xFF;
   mode_leds_lit.value[1] = 0xFF;
   mode_leds_lit.value[2] = 0xFF;
   mode_leds_lit.value[3] = 0xFF;
 
-  if (counter < 30) {
+  if (counter < 300) {
     mode_leds_lit.b.Pulse1 = 1;
     mode_leds_lit.b.Pulse2 = 0;
     counter += 1;
-  } else if (counter < 60) {
+  } else if (counter < 600) {
     mode_leds_lit.b.Pulse1 = 0;
     mode_leds_lit.b.Pulse2 = 1;
     counter += 1;

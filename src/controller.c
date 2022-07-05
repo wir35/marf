@@ -41,6 +41,32 @@ void InitClear_Timer() {
   TIM_ITConfig(TIM6, TIM_IT_Update, ENABLE);
 };
 
+
+// Functionality that needs to run both the main and modal loops
+void ControllerCommonAllLoops() {
+  // Expensive to recalculate every tick, so do it here
+  afg1_step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());;
+  afg2_step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());;
+
+  // Shift adc mux if time
+  if (controller_job_flags.adc_mux_shift_out) {
+    // Disable conversion during shift
+    controller_job_flags.inhibit_adc = 1;
+    if (Is_Expander_Present()) {
+      // Increment the slider, including expander sliders
+      controller_job_flags.adc_pot_sel = AdcMuxAdvanceExpanded(controller_job_flags.adc_pot_sel);
+    } else {
+      // Increments the slider
+      controller_job_flags.adc_pot_sel = AdcMuxAdvance(controller_job_flags.adc_pot_sel);
+    }
+    controller_job_flags.adc_mux_shift_out = 0;
+    // Wait for settle
+    delay_us(10);
+    // Reenable conversion again
+    controller_job_flags.inhibit_adc = 0;
+  }
+}
+
 // Main Loop. Does not return.
 
 void ControllerMainLoop() {
@@ -78,10 +104,7 @@ void ControllerMainLoop() {
 
   // Main loop. Does not return.
   while (1) {
-
-    // Expensive to recalculate every tick, so do it here
-    afg1_step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());;
-    afg2_step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());;
+    ControllerCommonAllLoops();
 
     // Scan switches every 5ms
     if (get_millis() - switch_last_read_time > 5) {
@@ -129,41 +152,15 @@ void ControllerMainLoop() {
       leds_update_time = get_millis();
     }
 
-    // Shift adc mux if time
-    if (controller_job_flags.adc_mux_shift_out) {
-      // Disable conversion during shift
-      controller_job_flags.inhibit_adc = 1;
-      if (Is_Expander_Present()) {
-        // Increment the slider, including expander sliders
-        controller_job_flags.adc_pot_sel = AdcMuxAdvanceExpanded(controller_job_flags.adc_pot_sel);
-      } else {
-        // Increments the slider
-        controller_job_flags.adc_pot_sel = AdcMuxAdvance(controller_job_flags.adc_pot_sel);
-      }
-      controller_job_flags.adc_mux_shift_out = 0;
-      // Wait for settle
-      delay_us(10);
-      // Reenable conversion again
-      controller_job_flags.inhibit_adc = 0;
-    }
-
     // Go into modal loops if called for
 
     if (controller_job_flags.modal_loop == CONTROLLER_MODAL_LOAD) {
       // Sub loop for load program
-      controller_job_flags.inhibit_adc = 1;
-      adc_pause();
       ControllerLoadProgramLoop(); // only exits when done
       controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
-      controller_job_flags.inhibit_adc = 0;
-      adc_resume();
     } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SAVE) {
-      controller_job_flags.inhibit_adc = 1;
-      adc_pause();
       ControllerSaveProgramLoop(); // only exits when done
       controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
-      controller_job_flags.inhibit_adc = 0;
-      adc_resume();
     }
 
   }; // end main loop
@@ -480,6 +477,7 @@ void ControllerLoadCalibration() {
   PrecomputeCalibration();
 }
 
+
 // Load program loop
 void ControllerLoadProgramLoop() {
   SavedProgram saved_program = {};
@@ -490,6 +488,8 @@ void ControllerLoadProgramLoop() {
   StepLedsLightSingleStep(0);
 
   while (1) {
+    ControllerCommonAllLoops();
+
     switches.value = HC165_ReadSwitches();
     if (switches.value != previous_switches.value) {
       if (!switches.b.StepRight) {
@@ -521,6 +521,7 @@ void ControllerLoadProgramLoop() {
         // Pin sliders and reset to step 1
         pin_all_sliders();
         DoReset1();
+        DoReset2();
 
         // Cute little animation
         RunLoadProgramAnimation();
@@ -533,7 +534,6 @@ void ControllerLoadProgramLoop() {
       }
       previous_switches.value = switches.value;
     } else {
-      delay_ms(2);
       RunWaitingLoadSaveAnimation();
     }
   }
@@ -546,11 +546,11 @@ void ControllerSaveProgramLoop() {
   uButtons previous_switches, switches;
   previous_switches.value = HC165_ReadSwitches();
 
-  // HardStop1();
-  // HardStop2();
   StepLedsLightSingleStep(0);
 
   while (1) {
+    ControllerCommonAllLoops();
+
     switches.value = HC165_ReadSwitches();
     if (switches.value != previous_switches.value) {
       if (!switches.b.StepRight) {
@@ -569,9 +569,12 @@ void ControllerSaveProgramLoop() {
         StepLedsLightSingleStep(program_num);
       } else if (!switches.b.ClearDown) {
         // Save program
-        // Copy from steps and sliders to temp saved_program
+        // Copy from steps and sliders to temp saved_program.
+        // Prevent updates to slider values during this time.
+        controller_job_flags.inhibit_adc = 1;
         memcpy((void *) saved_program.steps, (void *) steps, sizeof(steps));
         memcpy((void *) saved_program.sliders, (void *) sliders, sizeof(sliders));
+        controller_job_flags.inhibit_adc = 0;
 
         // Write the temp saved program to the EPROM
         CAT25512_write_block(
@@ -590,7 +593,6 @@ void ControllerSaveProgramLoop() {
       }
       previous_switches.value = switches.value;
     } else {
-      delay_ms(2);
       RunWaitingLoadSaveAnimation();
     }
   }
