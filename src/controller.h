@@ -42,7 +42,7 @@ extern volatile uint8_t edit_mode_step_num;
 extern volatile uint8_t edit_mode_section;
 
 
-#define KEY_DEBOUNCE_COUNT 3  // 3 bounces
+#define KEY_DEBOUNCE_COUNT 5  // 5 passes
 
 #define LONG_COUNTER_TICKS  30;
 #define SHORT_COUNTER_TICKS 10;

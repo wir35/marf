@@ -287,6 +287,8 @@ void EXTI9_5_IRQHandler() {
 	Every interrupt of Timer 4 triggers new output voltages and a check if the step has ended.
  */
 void TIM4_IRQHandler() {
+  static uint8_t tick_counter = 0;
+
   // Clear interrupt flag for Timer 4
   TIM4->SR = (uint16_t) ~TIM_IT_Update;
   __disable_irq();
@@ -313,10 +315,15 @@ void TIM4_IRQHandler() {
   } else {
     PULSE_LED_I_2_OFF;
   }
-
-  // Set flag to flush time and ref levels to external dac in main loop (slow)
-  controller_job_flags.afg1_tick = 1;
   __enable_irq();
+
+  // Send data to external dac at 1/16 the rate
+  if (tick_counter == 0) {
+    MAX5135_DAC_send(MAX5135_DAC_CH_0, controller_job_flags.afg1_outputs.time);
+    MAX5135_DAC_send(MAX5135_DAC_CH_1, controller_job_flags.afg1_outputs.ref);
+    controller_job_flags.afg1_tick = 0;
+  }
+  tick_counter = (tick_counter + 1) & 0x0F;
 };
 
 /*
@@ -324,6 +331,8 @@ void TIM4_IRQHandler() {
   Keep in sync with TIM4_IRQHandler().
  */
 void TIM5_IRQHandler() {
+  static uint8_t tick_counter = 0;
+
   // Clear interrupt flag for Timer 5
   TIM5->SR = (uint16_t) ~TIM_IT_Update;
   __disable_irq();
@@ -346,8 +355,14 @@ void TIM5_IRQHandler() {
   }
 
   DAC_SetChannel2Data(DAC_Align_12b_R, controller_job_flags.afg2_outputs.voltage);
-  controller_job_flags.afg2_tick = 1;
   __enable_irq();
+
+  // Send data to external dac at 1/16 the rate
+  if (tick_counter == 0) {
+    MAX5135_DAC_send(MAX5135_DAC_CH_2, controller_job_flags.afg2_outputs.time);
+    MAX5135_DAC_send(MAX5135_DAC_CH_3, controller_job_flags.afg2_outputs.ref);
+  }
+  tick_counter = (tick_counter + 1) & 0x0F;
 };
 
 

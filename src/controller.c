@@ -79,10 +79,6 @@ void ControllerMainLoop() {
   // Main loop. Does not return.
   while (1) {
 
-    // Compute continuous stage address
-    ComputeContinuousStep1();
-    ComputeContinuousStep2();
-
     // Expensive to recalculate every tick, so do it here
     afg1_step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());;
     afg2_step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());;
@@ -151,28 +147,23 @@ void ControllerMainLoop() {
       controller_job_flags.inhibit_adc = 0;
     }
 
-    if (controller_job_flags.afg1_tick) {
-      // Send data to external dac
-      MAX5135_DAC_send(MAX5135_DAC_CH_0, controller_job_flags.afg1_outputs.time);
-      MAX5135_DAC_send(MAX5135_DAC_CH_1, controller_job_flags.afg1_outputs.ref);
-      controller_job_flags.afg1_tick = 0;
-    }
-    if (controller_job_flags.afg2_tick) {
-      // Send data to external dac
-      MAX5135_DAC_send(MAX5135_DAC_CH_2, controller_job_flags.afg2_outputs.time);
-      MAX5135_DAC_send(MAX5135_DAC_CH_3, controller_job_flags.afg2_outputs.ref);
-      controller_job_flags.afg2_tick = 0;
-    }
-
     // Go into modal loops if called for
 
     if (controller_job_flags.modal_loop == CONTROLLER_MODAL_LOAD) {
       // Sub loop for load program
+      controller_job_flags.inhibit_adc = 1;
+      adc_pause();
       ControllerLoadProgramLoop(); // only exits when done
       controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
+      controller_job_flags.inhibit_adc = 0;
+      adc_resume();
     } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SAVE) {
+      controller_job_flags.inhibit_adc = 1;
+      adc_pause();
       ControllerSaveProgramLoop(); // only exits when done
       controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
+      controller_job_flags.inhibit_adc = 0;
+      adc_resume();
     }
 
   }; // end main loop
@@ -344,6 +335,7 @@ void ControllerProcessNavigationSwitches(uButtons* key) {
 void ControllerCheckClear() {
   uButtons myButtons;
   static uint8_t clear_counter1 = 0, clear_counter2 = 0;
+  static uint8_t inhibit_modal = 0;
 
   TIM6->SR = (uint16_t) ~TIM_IT_Update;
 
@@ -362,12 +354,14 @@ void ControllerCheckClear() {
         clear_counter2 = 0;
       }
     } else {
-      if (clear_counter1) {
+      if (clear_counter1 && !inhibit_modal) {
         // Go into LOAD modal in main loop
         controller_job_flags.modal_loop = CONTROLLER_MODAL_LOAD;
-      } else if (clear_counter2) {
+        inhibit_modal = 1;
+      } else if (clear_counter2 && !inhibit_modal) {
         // Go into SAVE modal in main loop
         controller_job_flags.modal_loop = CONTROLLER_MODAL_SAVE;
+        inhibit_modal = 1;
       }
       // Reset counters
       clear_counter1 = 0;
@@ -393,6 +387,11 @@ void ControllerCheckClear() {
     clear_counter1 = 0;
     clear_counter2 = 0;
   };
+
+  if (myButtons.b.ClearUp && myButtons.b.ClearDown) {
+    // Means clear switch is in the middle
+    inhibit_modal = 0;
+  }
 }
 
 void ControllerCalibrationLoop() {
@@ -488,8 +487,6 @@ void ControllerLoadProgramLoop() {
   uButtons previous_switches, switches;
   previous_switches.value = HC165_ReadSwitches();
 
-  HardStop1();
-  HardStop2();
   StepLedsLightSingleStep(0);
 
   while (1) {
@@ -510,9 +507,7 @@ void ControllerLoadProgramLoop() {
         }
         StepLedsLightSingleStep(program_num);
       } else if (!switches.b.ClearUp) {
-        // Load program. Takes a little while.
-        __disable_irq();
-
+        // Load program.
         // Read from EPROM into temporary saved_program
         CAT25512_read_block(
             eprom_memory.programs[program_num].start,
@@ -522,24 +517,23 @@ void ControllerLoadProgramLoop() {
         // Copy from saved_program to steps and sliders
         memcpy((void *) steps, (void *) saved_program.steps, sizeof(steps));
         memcpy((void *) sliders, (void *) saved_program.sliders, sizeof(sliders));
+
+        // Pin sliders and reset to step 1
         pin_all_sliders();
+        DoReset1();
 
         // Cute little animation
         RunLoadProgramAnimation();
         display_mode = DISPLAY_MODE_VIEW_1;
-        __enable_irq();
         return;
-      } else if (!switches.b.Pulse1On
-          || !switches.b.Pulse2On
-          || !switches.b.Pulse1Off
-          || !switches.b.Pulse2Off) {
+      } else if (!switches.b.StageAddress1Display || !switches.b.StageAddress2Display) {
         // Abort load
         display_mode = DISPLAY_MODE_VIEW_1;
         return;
       }
       previous_switches.value = switches.value;
     } else {
-      delay_ms(15);
+      delay_ms(2);
       RunWaitingLoadSaveAnimation();
     }
   }
@@ -552,8 +546,8 @@ void ControllerSaveProgramLoop() {
   uButtons previous_switches, switches;
   previous_switches.value = HC165_ReadSwitches();
 
-  HardStop1();
-  HardStop2();
+  // HardStop1();
+  // HardStop2();
   StepLedsLightSingleStep(0);
 
   while (1) {
@@ -574,9 +568,7 @@ void ControllerSaveProgramLoop() {
         }
         StepLedsLightSingleStep(program_num);
       } else if (!switches.b.ClearDown) {
-        // Save program. Takes a little while.
-        __disable_irq();
-
+        // Save program
         // Copy from steps and sliders to temp saved_program
         memcpy((void *) saved_program.steps, (void *) steps, sizeof(steps));
         memcpy((void *) saved_program.sliders, (void *) sliders, sizeof(sliders));
@@ -590,19 +582,15 @@ void ControllerSaveProgramLoop() {
         // Run cute animation
         RunSaveProgramAnimation();
         display_mode = DISPLAY_MODE_VIEW_1;
-        __enable_irq();
         return;
-      } else if (!switches.b.Pulse1On
-          || !switches.b.Pulse2On
-          || !switches.b.Pulse1Off
-          || !switches.b.Pulse2Off) {
+      } else if (!switches.b.StageAddress1Display || !switches.b.StageAddress2Display) {
         // Abort save
         display_mode = DISPLAY_MODE_VIEW_1;
         return;
       }
       previous_switches.value = switches.value;
     } else {
-      delay_ms(15);
+      delay_ms(2);
       RunWaitingLoadSaveAnimation();
     }
   }

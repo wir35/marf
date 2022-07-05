@@ -230,7 +230,7 @@ void RunSaveProgramAnimation() {
   mode_leds_lit.b.VoltageFull = 0;
   mode_leds_lit.b.VoltageSource = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(100);
+  delay_ms(10);
   // Second row
   mode_leds_lit.b.Voltage0 = 0;
   mode_leds_lit.b.Voltage2 = 0;
@@ -238,7 +238,7 @@ void RunSaveProgramAnimation() {
   mode_leds_lit.b.Voltage6 = 0;
   mode_leds_lit.b.Voltage8 = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(100);
+  delay_ms(10);
   // Third row
   mode_leds_lit.b.OPStop = 0;
   mode_leds_lit.b.OPSustain = 0;
@@ -246,7 +246,7 @@ void RunSaveProgramAnimation() {
   mode_leds_lit.b.CycleFirst = 0;
   mode_leds_lit.b.CycleLast = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(100);
+  delay_ms(10);
   // Fourth row
   mode_leds_lit.b.TimeRange0 = 0;
   mode_leds_lit.b.TimeRange1 = 0;
@@ -254,7 +254,7 @@ void RunSaveProgramAnimation() {
   mode_leds_lit.b.TimeRange1 = 0;
   mode_leds_lit.b.TimeSource = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(100);
+  delay_ms(10);
   // Reset all off
   mode_leds_lit.value[0] = 0xFF;
   mode_leds_lit.value[1] = 0xFF;
@@ -280,7 +280,7 @@ void RunLoadProgramAnimation() {
   mode_leds_lit.b.TimeRange1 = 0;
   mode_leds_lit.b.TimeSource = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(100);
+  delay_ms(10);
   // Third row
   mode_leds_lit.b.OPStop = 0;
   mode_leds_lit.b.OPSustain = 0;
@@ -288,7 +288,7 @@ void RunLoadProgramAnimation() {
   mode_leds_lit.b.CycleFirst = 0;
   mode_leds_lit.b.CycleLast = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(100);
+  delay_ms(10);
   // Second row
   mode_leds_lit.b.Voltage0 = 0;
   mode_leds_lit.b.Voltage2 = 0;
@@ -296,14 +296,14 @@ void RunLoadProgramAnimation() {
   mode_leds_lit.b.Voltage6 = 0;
   mode_leds_lit.b.Voltage8 = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(100);
+  delay_ms(10);
   // Flash first row
   mode_leds_lit.b.Quantization = 0;
   mode_leds_lit.b.Integration = 0;
   mode_leds_lit.b.VoltageFull = 0;
   mode_leds_lit.b.VoltageSource = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(100);
+  delay_ms(10);
   // Reset all off
   mode_leds_lit.value[0] = 0xFF;
   mode_leds_lit.value[1] = 0xFF;
@@ -318,7 +318,7 @@ void StepLedsLightSingleStep(uint8_t step) {
   LED_STEP_SendWord(steps_leds_lit);
 }
 
-// Called approx every 15ms
+// Called approx every 1ms
 // Just toggles pulse leds while waiting for step selection.
 
 void RunWaitingLoadSaveAnimation() {
@@ -329,16 +329,35 @@ void RunWaitingLoadSaveAnimation() {
   mode_leds_lit.value[2] = 0xFF;
   mode_leds_lit.value[3] = 0xFF;
 
-  if (counter < 3) {
+  if (counter < 30) {
     mode_leds_lit.b.Pulse1 = 1;
     mode_leds_lit.b.Pulse2 = 0;
     counter += 1;
-  } else if (counter < 6) {
+  } else if (counter < 60) {
     mode_leds_lit.b.Pulse1 = 0;
     mode_leds_lit.b.Pulse2 = 1;
     counter += 1;
   } else {
     counter = 0;
   }
+
+  // AFG1 mode LEDs
+  if (afg1_mode == MODE_RUN) {
+    mode_leds_lit.b.Seq1Run &= 0;
+  } else if (afg1_mode == MODE_WAIT  || afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
+    mode_leds_lit.b.Seq1Wait &= 0;
+  } else if (afg1_mode == MODE_STOP) {
+    mode_leds_lit.b.Seq1Stop &= 0;
+  };
+
+  // AFG2 mode LEDs
+  if (afg2_mode == MODE_RUN) {
+    mode_leds_lit.b.Seq2Run &= 0;
+  } else if (afg2_mode == MODE_WAIT || afg2_mode == MODE_WAIT_HI_Z  || afg2_mode == MODE_STAY_HI_Z) {
+    mode_leds_lit.b.Seq2Wait &= 0;
+  } else if (afg2_mode == MODE_STOP) {
+    mode_leds_lit.b.Seq2Stop &= 0;
+  };
+
   LEDS_modes_SendStruct(&mode_leds_lit);
 }

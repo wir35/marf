@@ -71,12 +71,12 @@ void InitStart_2_SignalTimer() {
 void AfgAllInitialize() {
   afg1_section = 0;
   afg1_step_num = 0;
-  afg1_step_cnt = 0;
+  afg1_step_cnt = 0xFFFFFFFF;
   afg1_mode = MODE_STOP;
 
   afg2_section = 0;
   afg2_step_num = 0;
-  afg2_step_cnt = 0;
+  afg2_step_cnt = 0xFFFFFFFF;
   afg2_mode = MODE_STOP;
 }
 
@@ -263,6 +263,9 @@ ProgrammedOutputs AfgTick1() {
   uint8_t do_recalculate_step_width = 1;
   ProgrammedOutputs outputs;
 
+  // Compute continuous stage address
+  ComputeContinuousStep1();
+
   if (afg1_step_cnt < afg1_step_width) {
     afg1_step_cnt += 1;
   }
@@ -379,6 +382,8 @@ ProgrammedOutputs AfgTick2() {
   uint16_t output_voltage = 0;
   uint8_t do_recalculate_step_width = 1;
   ProgrammedOutputs outputs;
+
+  ComputeContinuousStep2();
 
   if (afg2_step_cnt < afg2_step_width) {
     afg2_step_cnt += 1;
