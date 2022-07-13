@@ -490,14 +490,23 @@ void ControllerLoadProgramLoop() {
   SavedProgram saved_program = {};
   uint8_t program_num = 0;
   uButtons previous_switches, switches;
+  uint32_t switch_last_read_time = 0;
+  uint32_t now = 0;
   previous_switches.value = HC165_ReadSwitches();
 
   StepLedsLightSingleStep(0);
 
   while (1) {
+    now = get_millis();
     ControllerCommonAllLoops();
 
-    switches.value = HC165_ReadSwitches();
+    if (now - switch_last_read_time > 5) {
+      switches.value = HC165_ReadSwitches();
+      switch_last_read_time = now;
+    } else {
+      switches.value = previous_switches.value;
+    }
+
     if (switches.value != previous_switches.value) {
       if (!switches.b.StepRight) {
         if (program_num >= 15) {
@@ -551,14 +560,23 @@ void ControllerSaveProgramLoop() {
   uint8_t program_num = 0;
   SavedProgram saved_program = {};
   uButtons previous_switches, switches;
+  uint32_t switch_last_read_time = 0;
+  uint32_t now = 0;
   previous_switches.value = HC165_ReadSwitches();
 
   StepLedsLightSingleStep(0);
 
   while (1) {
+    now = get_millis();
     ControllerCommonAllLoops();
 
-    switches.value = HC165_ReadSwitches();
+    if (now - switch_last_read_time > 5) {
+      switches.value = HC165_ReadSwitches();
+      switch_last_read_time = now;
+    } else {
+      switches.value = previous_switches.value;
+    }
+
     if (switches.value != previous_switches.value) {
       if (!switches.b.StepRight) {
         if (program_num >= 15) {
@@ -611,7 +629,6 @@ void ControllerSaveProgramLoop() {
 // New readings are double buffered and applied at the end so that the current state being held
 // also does not glitch.
 void ControllerScanAdcLoop() {
-  volatile uint16_t shizz = 0;
   // Double buffer the new adc readings and apply them all together
   uint16_t new_readings[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
   adc_pause();
@@ -627,13 +644,6 @@ void ControllerScanAdcLoop() {
     ADC_SoftwareStartInjectedConv(ADC2);
     while (ADC_GetFlagStatus(ADC2, ADC_FLAG_JEOC) == RESET) {}
     new_readings[i] = ADC_GetInjectedConversionValue(ADC2, ADC_InjectedChannel_1);
-
-    if (new_readings[i] > 100) {
-      shizz = new_readings[i];
-    } else {
-      shizz = 0;
-    }
-
     ADC_ClearFlag(ADC2, ADC_FLAG_JEOC);
   }
 
