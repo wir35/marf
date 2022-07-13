@@ -136,25 +136,6 @@ inline uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
   return (unsigned int) voltage_level + 0.5;
 };
 
-// Get step time value, either internal or external depending on programming
-inline uint16_t GetStepTime(uint8_t section, uint8_t step_num) {
-  float time_level = 0.0;
-  uint8_t ext_ban_num = 0;
-  uint8_t slider_num = step_num;
-
-  step_num += section << 4; // section select
-
-  if (steps[step_num].b.TimeSource) {
-    // Step time is set externally
-    ext_ban_num = (uint8_t) sliders[slider_num].TLevel >> 10;
-    time_level = read_calibrated_add_data_uint16(ext_ban_num);
-  } else {
-    // Step time is set on panel
-    time_level = sliders[slider_num].TLevel;
-  };
-  return time_level;
-}
-
 // Get step time slider level
 inline uint16_t get_time_slider_level(uint8_t slider_num) {
   return sliders[slider_num].TLevel;
@@ -177,14 +158,14 @@ inline uint16_t get_time_slider_level(uint8_t slider_num) {
 inline uint32_t GetStepWidth(uint8_t section, uint8_t step_num, float time_multiplier) {
   float step_width = 0.0;
   float time_level = 0.0;
-  uint8_t ext_ban_num = 0;
+  volatile uint8_t ext_ban_num = 0;
   uint8_t slider_num = step_num;
 
   step_num += section << 4; // section select
 
   if (steps[step_num].b.TimeSource) {
     // Step time is set externally
-    ext_ban_num = (uint8_t) sliders[slider_num].TLevel >> 10;
+    ext_ban_num = sliders[slider_num].TLevel >> 10;
     time_level = read_calibrated_add_data_float(ext_ban_num);
   } else {
     // Step time is set on panel

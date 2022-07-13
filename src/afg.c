@@ -146,28 +146,6 @@ void JumpToStep1(unsigned int step) {
   }
 
   update_display();
-
-  /*
-
-  if (get_step_programming(afg1_section, afg1_step_num).b.Sloped) {
-    // Sloped step, hold the value
-    OutputVoltage = afg1_prev_step_level;
-  } else {
-    // Stepped, immediately jump
-    OutputVoltage = GetStepVoltage(afg1_section, afg1_step_num);
-  }
-
-  // Set DAC channel 1 to AFG1 voltage out value
-  afg1_step_level = OutputVoltage;
-  DAC_SetChannel1Data(DAC_Align_12b_R, OutputVoltage);
-
-  // Set AFG1 time out value
-  MAX5135_DAC_send(MAX5135_DAC_CH_0, get_time_slider_level(afg1_step_num) >> 2);
-
-  // Set AFG1 reference out value
-  // (Slopes down from 1023 to 0 over the course of the step)
-  MAX5135_DAC_send(MAX5135_DAC_CH_1, 1023);
-  */
 }
 
 /* Handle jumping to new stage. Keep in sync with 1. */
@@ -182,20 +160,6 @@ void JumpToStep2(unsigned int step) {
     afg2_mode = afg2_prev_mode;
   }
   update_display();
-
-  /*
-  if (get_step_programming(afg2_section, afg2_step_num).b.Sloped) {
-    OutputVoltage = afg2_prev_step_level;
-  } else {
-    OutputVoltage = GetStepVoltage(afg2_section, afg2_step_num);
-  }
-
-  afg2_step_level = OutputVoltage;
-  DAC_SetChannel2Data(DAC_Align_12b_R, OutputVoltage);
-
-  MAX5135_DAC_send(MAX5135_DAC_CH_2, get_time_slider_level(afg2_step_num) >> 2);
-  MAX5135_DAC_send(MAX5135_DAC_CH_3, 1023);
-  */
 }
 
 // Process start, stop and strobe pulse inputs in reaction to an interrupt on any of them.
