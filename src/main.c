@@ -30,23 +30,17 @@ volatile uDipConfig dip_config;
 // Clocks
 RCC_ClocksTypeDef RCC_Clocks;
 
-inline FlagStatus ADC_GetFlagStatus_Fast(ADC_TypeDef* ADCx, uint8_t ADC_FLAG) {
-  return ((ADCx->SR & ADC_FLAG) != (uint8_t) RESET) ? SET : RESET;
-}
-
 // ADC interrupt handler
 void ADC_IRQHandler() {
   volatile uint8_t stage = 0;
-  __disable_irq();
 
-  uint8_t adc1_eoc = ADC_GetFlagStatus_Fast(ADC1, ADC_FLAG_EOC) == SET;
-  uint8_t adc2_eoc = ADC_GetFlagStatus_Fast(ADC2, ADC_FLAG_EOC) == SET;
+  uint8_t adc1_eoc = ADC_GetITStatus(ADC1, ADC_IT_EOC) == SET;
+  uint8_t adc2_eoc = ADC_GetITStatus(ADC2, ADC_IT_EOC) == SET;
 
-  if (adc1_eoc) ADC_ClearFlag(ADC1, ADC_FLAG_EOC);
-  if (adc2_eoc) ADC_ClearFlag(ADC2, ADC_FLAG_EOC);
+  if (adc1_eoc) ADC_ClearITPendingBit(ADC1, ADC_IT_EOC);
+  if (adc2_eoc) ADC_ClearITPendingBit(ADC2, ADC_IT_EOC);
 
   if (controller_job_flags.inhibit_adc) {
-    __enable_irq();
     return;
   }
 
@@ -79,7 +73,6 @@ void ADC_IRQHandler() {
     WriteTimeSlider(stage, ADC1->DR);
     controller_job_flags.adc_mux_shift_out = 1;
   }
-  __enable_irq();
 }
 
 
@@ -141,6 +134,9 @@ void mADC_init(void)
   ADC_RegularChannelConfig(ADC1, ADC_Channel_0 ,1, ADC_SampleTime_480Cycles);
   ADC_RegularChannelConfig(ADC2, ADC_Channel_1 ,1, ADC_SampleTime_480Cycles);
 
+  ADC_InjectedSequencerLengthConfig(ADC2, 1);
+  ADC_InjectedChannelConfig(ADC2, ADC_Channel_1, 1 , ADC_SampleTime_480Cycles);
+
   // ADC interrupts init
   nvicStructure.NVIC_IRQChannel = ADC_IRQn;
   nvicStructure.NVIC_IRQChannelPreemptionPriority = 0;
@@ -153,15 +149,6 @@ void mADC_init(void)
   ADC_ITConfig(ADC2, ADC_IT_EOC, ENABLE);
   ADC_Cmd(ADC1, ENABLE);
   ADC_Cmd(ADC2, ENABLE);
-};
-
-
-void ADCPause(void) {
-  NVIC_DisableIRQ(ADC_IRQn);
-};
-
-void ADCResume(void) {
-  NVIC_EnableIRQ(ADC_IRQn);
 };
 
 // External interrupts init for start, stop and strobe
@@ -233,18 +220,25 @@ void HandlePulseInterruptSignals() {
   // Inhibit pulse handling for 2ms after anything changes
   if (now - pulse1_handled_time > 2) {
     // Debouncing ... don't trigger if the switches might have bounced back to low values
-    if (pulses1.start || pulses1.stop || pulses1.strobe) {
-      ProcessModeChanges1(pulses1);
+    if (any_pulses_high(pulses1)) {
+      // We can't immediately call ProcessModeChanges1(pulses1)
+      // since we may need newly updated values from adc2 to do the right thing.
+      // Go into a short modal state and then process the input pulses.
+      controller_job_flags.afg1_interrupts = pulses1;
+      controller_job_flags.modal_loop = CONTROLLER_MODAL_SCAN;
       pulse1_handled_time = now;
     }
   } else if (now < pulse1_handled_time) {
     // In case of millis overflow
     pulse1_handled_time = 0;
   }
+
   if (now - pulse2_handled_time > 2) {
     // Debouncing
-    if (pulses2.start || pulses2.stop || pulses2.strobe) {
-      ProcessModeChanges2(pulses2);
+    if (any_pulses_high(pulses2)) {
+      // ProcessModeChanges2(pulses2);
+      controller_job_flags.afg2_interrupts = pulses2;
+      controller_job_flags.modal_loop = CONTROLLER_MODAL_SCAN;
       pulse2_handled_time = now;
     }
   } else if (now < pulse2_handled_time) {

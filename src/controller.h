@@ -5,10 +5,12 @@
 
 #include "HC165.h"
 #include "afg.h"
+#include "analog_data.h"
 
 #define CONTROLLER_MODAL_NONE 0
 #define CONTROLLER_MODAL_LOAD 1
 #define CONTROLLER_MODAL_SAVE 2
+#define CONTROLLER_MODAL_SCAN 3
 
 // Controller Job Flags
 // This is state that is passed back and forth between the controller,
@@ -33,6 +35,11 @@ typedef struct  {
 
   // Flags that we are going into a modal loop
   uint8_t modal_loop;
+
+  // Flags that we have input pulses to process after a scan
+  PulseInputs afg1_interrupts;
+  PulseInputs afg2_interrupts;
+
 } ControllerJobFlags;
 
 extern volatile ControllerJobFlags controller_job_flags;
@@ -65,5 +72,7 @@ void ControllerLoadCalibration();
 void ControllerLoadProgramLoop();
 
 void ControllerSaveProgramLoop();
+
+void ControllerScanAdcLoop();
 
 #endif

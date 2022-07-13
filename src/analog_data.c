@@ -12,6 +12,8 @@ volatile uint16_t cal_constants[8] = {0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, 0xFFF, 
 // Calibration scalers for external inputs, precomputed in setup
 float external_cal[8] = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
 
+PulseInputs PULSE_INPUTS_NONE = { 0, 0, 0 };
+
 // Precomputed magic numbers for voltage scaling
 // In the context of 12 bit range / 0.0 - 4095.0
 
@@ -49,6 +51,10 @@ void WriteOtherCv(uint8_t cv_num, uint32_t new_adc_reading) {
 
   uint16_t adc_reading = (uint16_t) (new_adc_reading & 0xfff) << 4;
   add_data[cv_num] = apply_voltage_smoother(adc_reading, &voltage_smoothers[cv_num]);
+}
+
+void WriteOtherCvWithoutSmoothing(uint8_t cv_num, uint32_t new_adc_reading) {
+  add_data[cv_num] = new_adc_reading;
 }
 
 void PrecomputeCalibration(void) {

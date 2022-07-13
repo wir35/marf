@@ -129,7 +129,7 @@ uint8_t CheckStart2() {
 }
 
 void JumpToStep1(unsigned int step) {
-  unsigned int OutputVoltage = 0;
+  // unsigned int OutputVoltage = 0;
 
   // Sample and hold current output voltage value.
   afg1_prev_step_level = afg1_step_level;
@@ -146,6 +146,8 @@ void JumpToStep1(unsigned int step) {
   }
 
   update_display();
+
+  /*
 
   if (get_step_programming(afg1_section, afg1_step_num).b.Sloped) {
     // Sloped step, hold the value
@@ -165,11 +167,12 @@ void JumpToStep1(unsigned int step) {
   // Set AFG1 reference out value
   // (Slopes down from 1023 to 0 over the course of the step)
   MAX5135_DAC_send(MAX5135_DAC_CH_1, 1023);
+  */
 }
 
 /* Handle jumping to new stage. Keep in sync with 1. */
 void JumpToStep2(unsigned int step) {
-  unsigned int OutputVoltage = 0;
+  // unsigned int OutputVoltage = 0;
 
   afg2_prev_step_level = afg2_step_level;
   afg2_step_num = step;
@@ -180,6 +183,7 @@ void JumpToStep2(unsigned int step) {
   }
   update_display();
 
+  /*
   if (get_step_programming(afg2_section, afg2_step_num).b.Sloped) {
     OutputVoltage = afg2_prev_step_level;
   } else {
@@ -191,6 +195,7 @@ void JumpToStep2(unsigned int step) {
 
   MAX5135_DAC_send(MAX5135_DAC_CH_2, get_time_slider_level(afg2_step_num) >> 2);
   MAX5135_DAC_send(MAX5135_DAC_CH_3, 1023);
+  */
 }
 
 // Process start, stop and strobe pulse inputs in reaction to an interrupt on any of them.

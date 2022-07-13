@@ -162,7 +162,12 @@ inline static void adc_mux_send_word(const unsigned long long int data) {
 }
 
 void AdcMuxResetAllOff() {
-  adc_mux_send_word(0xFFFFFFFF);
+  adc_mux_send_word(0xFFFFFFFFFF);
+}
+
+uint8_t AdcMuxReset() {
+  adc_mux_send_word(0xFFFFFFFFF0);
+  return 0;
 }
 
 // Init GPIOs for ADC channels multiplexers
@@ -267,3 +272,15 @@ uint8_t AdcMuxAdvanceExpanded(uint8_t pot) {
   return next_pot; 
 }
 
+// Select one of the adc2 channels explicitly (0-7)
+void AdcMuxSelectAdc2(uint8_t pot) {
+  ADC_POTS_SELECTOR_STORAGE_LOW;
+
+  adc_mux_send_nibble(0xF); // Unused nibble
+  adc_mux_send_nibble(pot); // Select the channel
+  adc_mux_send_byte(0xFF);  // Shift
+
+  // Activate the shift registers with the new data
+  ADC_POTS_SELECTOR_STORAGE_HIGH;
+  DELAY_NOPS_120NS();
+}

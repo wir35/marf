@@ -20,6 +20,12 @@ typedef struct {
   uint8_t strobe;
 } PulseInputs;
 
+PulseInputs PULSE_INPUTS_NONE;
+
+inline uint8_t any_pulses_high(PulseInputs in) {
+  return in.start || in.stop || in.strobe;
+}
+
 // Additional analog data exposed globally for now
 
 extern volatile uint16_t add_data[8];
@@ -78,6 +84,8 @@ inline float read_calibrated_add_data_float(uint8_t d) {
 }
 
 void WriteOtherCv(uint8_t cv_num, uint32_t new_adc_reading);
+
+void WriteOtherCvWithoutSmoothing(uint8_t cv_num, uint32_t new_adc_reading);
 
 void PrecomputeCalibration(void);
 

@@ -1,5 +1,6 @@
 #include "controller.h"
 
+#include <stddef.h>
 #include <string.h>  // memcpy
 #include <stm32f4xx.h>
 
@@ -11,6 +12,7 @@
 #include "MAX5135.h"
 #include "delays.h"
 #include "eprom.h"
+#include "analog_data.h"
 
 // Step selected for editing (0-31)
 volatile uint8_t edit_mode_step_num = 0;
@@ -159,7 +161,12 @@ void ControllerMainLoop() {
       ControllerLoadProgramLoop(); // only exits when done
       controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
     } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SAVE) {
+      // Save program
       ControllerSaveProgramLoop(); // only exits when done
+      controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
+    } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SCAN) {
+      // Scan the adc2 inputs before processing a pulse in
+      ControllerScanAdcLoop(); // only exits when done
       controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
     }
 
@@ -597,3 +604,63 @@ void ControllerSaveProgramLoop() {
     }
   }
 }
+
+// Immediately scan all the adc2 lines, and then process mode changes from the input pulses.
+// This guarantees that we acquire the new values present on external inputs and stage address
+// before we attempt to utilize them. This prevents a couple ms of glitching on state transitions.
+// New readings are double buffered and applied at the end so that the current state being held
+// also does not glitch.
+void ControllerScanAdcLoop() {
+  volatile uint16_t shizz = 0;
+  // Double buffer the new adc readings and apply them all together
+  uint16_t new_readings[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+  adc_pause();
+  controller_job_flags.inhibit_adc = 1;
+  AdcMuxResetAllOff();
+
+  // Scan all of the ADC2 channels
+  for (uint8_t i = 0; i < 8; i++) {
+    AdcMuxSelectAdc2(i);  // Shift the mux
+    delay_us(10);         // Settling time
+
+    // Start injected conversion
+    ADC_SoftwareStartInjectedConv(ADC2);
+    while (ADC_GetFlagStatus(ADC2, ADC_FLAG_JEOC) == RESET) {}
+    new_readings[i] = ADC_GetInjectedConversionValue(ADC2, ADC_InjectedChannel_1);
+
+    if (new_readings[i] > 100) {
+      shizz = new_readings[i];
+    } else {
+      shizz = 0;
+    }
+
+    ADC_ClearFlag(ADC2, ADC_FLAG_JEOC);
+  }
+
+  // Apply all the new readings immediately without filtering
+  for (uint8_t i = 0; i < 8; i++) {
+    WriteOtherCvWithoutSmoothing(i, new_readings[i]);
+  }
+
+  // Now process the pending events
+  // Disable all irq including the function generators
+  __disable_irq();
+  if (any_pulses_high(controller_job_flags.afg1_interrupts)) {
+    ProcessModeChanges1(controller_job_flags.afg1_interrupts);
+    controller_job_flags.afg1_interrupts = PULSE_INPUTS_NONE;
+  }
+  if (any_pulses_high(controller_job_flags.afg2_interrupts)) {
+    ProcessModeChanges2(controller_job_flags.afg2_interrupts);
+    controller_job_flags.afg2_interrupts = PULSE_INPUTS_NONE;
+  }
+
+  // Restore normal operation
+  AdcMuxReset();
+  delay_us(10);
+  controller_job_flags.adc_pot_sel = 0;
+  controller_job_flags.adc_mux_shift_out = 0;
+  controller_job_flags.inhibit_adc = 0;
+  __enable_irq();
+  adc_resume();
+}
+
