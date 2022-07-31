@@ -214,8 +214,8 @@ void HandlePulseInterruptSignals() {
   uint32_t now = get_millis();
 
   // Read all 3 GPIO pins directly right now
-  volatile PulseInputs pulses1 = get_afg1_pulse_inputs();
-  volatile PulseInputs pulses2 = get_afg2_pulse_inputs();
+  volatile PulseInputs pulses1 = get_afg1_pulse_interrupts();
+  volatile PulseInputs pulses2 = get_afg2_pulse_interrupts();
 
   // Inhibit pulse handling for 2ms after anything changes
   if (now - pulse1_handled_time > 2) {
@@ -245,15 +245,15 @@ void HandlePulseInterruptSignals() {
     pulse2_handled_time = 0;
   }
 
-  // Clear all interrupt flags
+  // Clear all interrupt flags that were handled
 
-  EXTI_ClearITPendingBit(EXTI_Line8);
-  EXTI_ClearITPendingBit(EXTI_Line0);
-  EXTI_ClearITPendingBit(EXTI_Line5);
+  if (pulses1.start)  EXTI_ClearITPendingBit(EXTI_LINE_START1);
+  if (pulses1.stop)   EXTI_ClearITPendingBit(EXTI_LINE_STOP1);
+  if (pulses1.strobe) EXTI_ClearITPendingBit(EXTI_LINE_STROBE1);
 
-  EXTI_ClearITPendingBit(EXTI_Line6);
-  EXTI_ClearITPendingBit(EXTI_Line1);
-  EXTI_ClearITPendingBit(EXTI_Line7);
+  if (pulses2.start)  EXTI_ClearITPendingBit(EXTI_LINE_START2);
+  if (pulses2.stop)   EXTI_ClearITPendingBit(EXTI_LINE_STOP2);
+  if (pulses2.strobe) EXTI_ClearITPendingBit(EXTI_LINE_STROBE2);
 };
 
 // AFG1 stop interrupt
@@ -368,6 +368,9 @@ void mTimersInit(void) {
   NVIC_InitTypeDef nvicStructure;
 
   RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM4, ENABLE);
+
+  // Set up timers 4 and 5 to run at 32kHz.
+  // Use a large prescaler so we can do long durations of up to 2 minutes.
 
   TIM_TimeBaseStructInit(&myTimer);
   myTimer.TIM_Prescaler = AFG_TIMER_PRESCALER;

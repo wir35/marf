@@ -136,7 +136,25 @@ inline uint16_t GetStepVoltage(uint8_t section, uint8_t step_num) {
   return (unsigned int) voltage_level + 0.5;
 };
 
-// Get step time slider level
+// The time multiplier panel is marked for log scale (0.5, 1, 2, 4) but linear pots are used.
+
+// Scale the time multipliers to more closely match the panel.
+// Use a linear interpolation between the points instead of log2.
+
+inline float scale_time_fake_log2(float linear_val) {
+  if (linear_val < 1365.0) {
+    // 512 - 1024 or 0.5 - 1
+    return linear_val * 0.375 + 512.0;
+  } else if (linear_val < 2730) {
+    // 1024 - 2048 or 1 - 2
+    return (linear_val - 1365) * 0.882 + 1024.0;
+  } else {
+    // 2048 - 4095 or 2 - 4
+    return (linear_val - 2730) * 1.5 + 2048.0;
+  }
+}
+
+// Get step time slider level as simple linear value
 inline uint16_t get_time_slider_level(uint8_t slider_num) {
   return sliders[slider_num].TLevel;
 }

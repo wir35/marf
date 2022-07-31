@@ -91,21 +91,29 @@ void PrecomputeCalibration(void);
 
 void SetVoltageRange(uDipConfig dip_config);
 
-// Return the current level of pulse inputs direct from the gpio pins
-inline PulseInputs get_afg1_pulse_inputs() {
+#define EXTI_LINE_START1  EXTI_Line8
+#define EXTI_LINE_STOP1   EXTI_Line0
+#define EXTI_LINE_STROBE1 EXTI_Line5
+
+#define EXTI_LINE_START2  EXTI_Line6
+#define EXTI_LINE_STOP2   EXTI_Line1
+#define EXTI_LINE_STROBE2 EXTI_Line7
+
+// Return the interrupt flag status for each pulse
+inline PulseInputs get_afg1_pulse_interrupts() {
   PulseInputs pulse_inputs = {};
-  pulse_inputs.start  = (GPIOB->IDR & GPIO_Pin_8) != 0;  // PB8
-  pulse_inputs.stop   = (GPIOB->IDR & GPIO_Pin_0) != 0;  // PB0
-  pulse_inputs.strobe = (GPIOB->IDR & GPIO_Pin_5) != 0;  // PB5
+  pulse_inputs.start  = EXTI_GetFlagStatus(EXTI_LINE_START1)  == SET;
+  pulse_inputs.stop   = EXTI_GetFlagStatus(EXTI_LINE_STOP1)   == SET;
+  pulse_inputs.strobe = EXTI_GetFlagStatus(EXTI_LINE_STROBE1) == SET;
   return pulse_inputs;
 }
 
-// Return the current level of pulse inputs direct from the gpio pins
-inline PulseInputs get_afg2_pulse_inputs() {
+// Return the interrupt flag status for each pulse
+inline PulseInputs get_afg2_pulse_interrupts() {
   PulseInputs pulse_inputs = {};
-  pulse_inputs.start  = (GPIOB->IDR & GPIO_Pin_6) != 0;  // PB6
-  pulse_inputs.stop   = (GPIOB->IDR & GPIO_Pin_1) != 0;  // PB1
-  pulse_inputs.strobe = (GPIOB->IDR & GPIO_Pin_7) != 0;  // PB7
+  pulse_inputs.start  = EXTI_GetFlagStatus(EXTI_LINE_START2)  == SET;
+  pulse_inputs.stop   = EXTI_GetFlagStatus(EXTI_LINE_STOP2)   == SET;
+  pulse_inputs.strobe = EXTI_GetFlagStatus(EXTI_LINE_STROBE2) == SET;
   return pulse_inputs;
 }
 

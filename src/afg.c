@@ -444,29 +444,12 @@ ProgrammedOutputs AfgTick2() {
 
 #define TIME_MULTIPLIER_SCALER 0.0009766
 
-// The panel is marked for log scale (0.5, 1, 2, 4) but linear pots are used.
-// Scale the time multipliers to more closely match the panel.
-// Use a linear interpolation between the points instead of log2.
-
-inline float fake_log2(float linear_val) {
-  if (linear_val < 1365.0) {
-    // 512 - 1024 or 0.5 - 1
-    return linear_val * 0.375 + 512.0;
-  } else if (linear_val < 2730) {
-    // 1024 - 2048 or 1 - 2
-    return (linear_val - 1365) * 0.882 + 1024.0;
-  } else {
-    // 2048 - 4095 or 2 - 4
-    return (linear_val - 2730) * 1.5 + 2048.0;
-  }
-}
-
 float GetTimeMultiplier1() {
-  return fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_1)) * TIME_MULTIPLIER_SCALER;
+  return scale_time_fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_1)) * TIME_MULTIPLIER_SCALER;
 }
 
 float GetTimeMultiplier2() {
-  return fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_2)) * TIME_MULTIPLIER_SCALER;
+  return scale_time_fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_2)) * TIME_MULTIPLIER_SCALER;
 }
 
 

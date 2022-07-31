@@ -159,15 +159,12 @@ void ControllerMainLoop() {
     if (controller_job_flags.modal_loop == CONTROLLER_MODAL_LOAD) {
       // Sub loop for load program
       ControllerLoadProgramLoop(); // only exits when done
-      controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
     } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SAVE) {
       // Save program
       ControllerSaveProgramLoop(); // only exits when done
-      controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
     } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SCAN) {
       // Scan the adc2 inputs before processing a pulse in
       ControllerScanAdcLoop(); // only exits when done
-      controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
     }
 
   }; // end main loop
@@ -553,6 +550,7 @@ void ControllerLoadProgramLoop() {
       RunWaitingLoadSaveAnimation();
     }
   }
+  controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
 }
 
 // Save program loop
@@ -621,6 +619,7 @@ void ControllerSaveProgramLoop() {
       RunWaitingLoadSaveAnimation();
     }
   }
+  controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
 }
 
 // Immediately scan all the adc2 lines, and then process mode changes from the input pulses.
@@ -670,6 +669,7 @@ void ControllerScanAdcLoop() {
   controller_job_flags.adc_pot_sel = 0;
   controller_job_flags.adc_mux_shift_out = 0;
   controller_job_flags.inhibit_adc = 0;
+  controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
   __enable_irq();
   adc_resume();
 }

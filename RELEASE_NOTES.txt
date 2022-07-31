@@ -39,6 +39,7 @@ the timing resolution of the previous version.
 8. Improved display update system lights leds better when the clock is at high speeds.
 9. Applied consistent code style guide including capitilization, indentation.
 10. Improved naming conventions using Buchla standard terminology.
+11. Double buffering scheme to reduce glitches at stage transitions
 
 
 Manual Addendum
