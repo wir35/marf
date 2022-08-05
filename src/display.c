@@ -6,7 +6,6 @@
 #include "leds_step.h"
 #include "program.h"
 #include "afg.h"
-#include "controller.h"
 
 // Flags which can be set by anything to update the led display
 volatile uDisplayUpdateFlag display_update_flags;
@@ -75,23 +74,23 @@ void UpdateLedsProgramMode(uLeds* mLeds, uStep* step) {
 }
 
 // Update mode and programming LEDs
-void UpdateModeSectionLeds() {
+void UpdateModeSectionLeds(AfgControllerState afg1, AfgControllerState afg2, uint8_t edit_mode_section, uint8_t edit_mode_step_num) {
 
   // AFG1 mode LEDs
-  if (afg1_mode == MODE_RUN) {
+  if (afg1.mode == MODE_RUN) {
     mode_leds_lit.b.Seq1Run &= 0;
-  } else if (afg1_mode == MODE_WAIT  || afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
+  } else if (afg1.mode == MODE_WAIT  || afg1.mode == MODE_WAIT_HI_Z || afg1.mode == MODE_STAY_HI_Z) {
     mode_leds_lit.b.Seq1Wait &= 0;
-  } else if (afg1_mode == MODE_STOP) {
+  } else if (afg1.mode == MODE_STOP) {
     mode_leds_lit.b.Seq1Stop &= 0;
   };
 
   // AFG2 mode LEDs
-  if (afg2_mode == MODE_RUN) {
+  if (afg2.mode == MODE_RUN) {
     mode_leds_lit.b.Seq2Run &= 0;
-  } else if (afg2_mode == MODE_WAIT || afg2_mode == MODE_WAIT_HI_Z  || afg2_mode == MODE_STAY_HI_Z) {
+  } else if (afg2.mode == MODE_WAIT || afg2.mode == MODE_WAIT_HI_Z  || afg2.mode == MODE_STAY_HI_Z) {
     mode_leds_lit.b.Seq2Wait &= 0;
-  } else if (afg2_mode == MODE_STOP) {
+  } else if (afg2.mode == MODE_STOP) {
     mode_leds_lit.b.Seq2Stop &= 0;
   };
 
@@ -107,7 +106,7 @@ void UpdateModeSectionLeds() {
 
   switch (display_mode) {
   case DISPLAY_MODE_VIEW_1:
-    led_step = get_step_programming(afg1_section, afg1_step_num);
+    led_step = get_step_programming(afg1.section, afg1.step_num);
     UpdateLedsProgramMode(&mode_leds_lit, &led_step);
     break;
   case DISPLAY_MODE_EDIT_1:
@@ -115,7 +114,7 @@ void UpdateModeSectionLeds() {
     UpdateLedsProgramMode(&mode_leds_lit, &led_step);
     break;
   case DISPLAY_MODE_VIEW_2:
-    led_step = get_step_programming(afg2_section, afg2_step_num);
+    led_step = get_step_programming(afg2.section, afg2.step_num);
     UpdateLedsProgramMode(&mode_leds_lit, &led_step);
     break;
   case DISPLAY_MODE_EDIT_2:
@@ -126,12 +125,12 @@ void UpdateModeSectionLeds() {
 }
 
 // Mark the led lit/dirty and it will be lit in the next shift
-void UpdateStepSectionLeds() {
+void UpdateStepSectionLeds(AfgControllerState afg1, AfgControllerState afg2, uint8_t edit_mode_step_num) {
   if ( display_mode == DISPLAY_MODE_VIEW_1 ) {
-    steps_leds_lit &= ~(1UL << afg1_step_num);
+    steps_leds_lit &= ~(1UL << afg1.step_num);
   };
   if ( display_mode == DISPLAY_MODE_VIEW_2 ) {
-    steps_leds_lit &= ~(1UL << afg2_step_num);
+    steps_leds_lit &= ~(1UL << afg2.step_num);
   };
   if ( ( display_mode == DISPLAY_MODE_EDIT_1 ) ||
       ( display_mode == DISPLAY_MODE_EDIT_2 )) {
@@ -160,9 +159,6 @@ void RunClearAnimation() {
 // Actually shift the lit leds out via the two shift registers
 // and then reset everything.
 void FlushLedUpdates() {
-  UpdateModeSectionLeds();
-  UpdateStepSectionLeds();
-
   if (Is_Expander_Present()) {
     LED_STEP_SendWordExpanded(steps_leds_lit);
   } else {
@@ -321,7 +317,7 @@ void StepLedsLightSingleStep(uint8_t step) {
 // Called approx every 1ms
 // Just toggles pulse leds while waiting for step selection.
 
-void RunWaitingLoadSaveAnimation() {
+void RunWaitingLoadSaveAnimation(AfgControllerState afg1, AfgControllerState afg2) {
   static uint16_t counter = 0;
 
   mode_leds_lit.value[0] = 0xFF;
@@ -342,20 +338,20 @@ void RunWaitingLoadSaveAnimation() {
   }
 
   // AFG1 mode LEDs
-  if (afg1_mode == MODE_RUN) {
+  if (afg1.mode == MODE_RUN) {
     mode_leds_lit.b.Seq1Run &= 0;
-  } else if (afg1_mode == MODE_WAIT  || afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
+  } else if (afg1.mode == MODE_WAIT  || afg1.mode == MODE_WAIT_HI_Z || afg1.mode == MODE_STAY_HI_Z) {
     mode_leds_lit.b.Seq1Wait &= 0;
-  } else if (afg1_mode == MODE_STOP) {
+  } else if (afg1.mode == MODE_STOP) {
     mode_leds_lit.b.Seq1Stop &= 0;
   };
 
   // AFG2 mode LEDs
-  if (afg2_mode == MODE_RUN) {
+  if (afg2.mode == MODE_RUN) {
     mode_leds_lit.b.Seq2Run &= 0;
-  } else if (afg2_mode == MODE_WAIT || afg2_mode == MODE_WAIT_HI_Z  || afg2_mode == MODE_STAY_HI_Z) {
+  } else if (afg2.mode == MODE_WAIT || afg2.mode == MODE_WAIT_HI_Z  || afg2.mode == MODE_STAY_HI_Z) {
     mode_leds_lit.b.Seq2Wait &= 0;
-  } else if (afg2_mode == MODE_STOP) {
+  } else if (afg2.mode == MODE_STOP) {
     mode_leds_lit.b.Seq2Stop &= 0;
   };
 

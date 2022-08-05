@@ -236,7 +236,6 @@ void HandlePulseInterruptSignals() {
   if (now - pulse2_handled_time > 2) {
     // Debouncing
     if (any_pulses_high(pulses2)) {
-      // ProcessModeChanges2(pulses2);
       controller_job_flags.afg2_interrupts = pulses2;
       controller_job_flags.modal_loop = CONTROLLER_MODAL_SCAN;
       pulse2_handled_time = now;
@@ -288,7 +287,7 @@ void TIM4_IRQHandler() {
   __disable_irq();
 
   // Process one time window and return the programmed output levels
-  controller_job_flags.afg1_outputs = AfgTick1();
+  controller_job_flags.afg1_outputs = AfgTick(AFG1, get_afg1_pulse_inputs());
 
   // Update internal dac (fast)
   DAC_SetChannel1Data(DAC_Align_12b_R, controller_job_flags.afg1_outputs.voltage);
@@ -330,7 +329,7 @@ void TIM5_IRQHandler() {
   // Clear interrupt flag for Timer 5
   TIM5->SR = (uint16_t) ~TIM_IT_Update;
   __disable_irq();
-  controller_job_flags.afg2_outputs = AfgTick2();
+  controller_job_flags.afg2_outputs = AfgTick(AFG2, get_afg2_pulse_inputs());
 
   if (controller_job_flags.afg2_outputs.all_pulses) {
     PULSE_LED_II_ALL_ON;
@@ -443,16 +442,20 @@ void TIM8_TRG_COM_TIM14_IRQHandler(void) {
 // This is only used when timer is started by sustain or enable mode
 void TIM3_IRQHandler() {
   TIM3->SR = (uint16_t) ~TIM_IT_Update;
-
-  if (CheckStart1()) TIM3->CR1 &= ~TIM_CR1_CEN;
+  uint8_t start_signal = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1;
+  if (AfgCheckStart(AFG1, start_signal)) {
+    TIM3->CR1 &= ~TIM_CR1_CEN;
+  }
 };
 
 // Timer Interrupt handler for start scan section 1
 // This is only used when timer is started by sustain or enable mode
 void TIM7_IRQHandler() {
   TIM7->SR = (uint16_t) ~TIM_IT_Update;
-
-  if (CheckStart2()) TIM7->CR1 &= ~TIM_CR1_CEN;
+  uint8_t start_signal = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1;
+  if (AfgCheckStart(AFG2, start_signal)) {
+    TIM7->CR1 &= ~TIM_CR1_CEN;
+  }
 };
 
 // Clear switch scan

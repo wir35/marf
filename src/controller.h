@@ -44,11 +44,6 @@ typedef struct  {
 
 extern volatile ControllerJobFlags controller_job_flags;
 
-// The section and step number in editing mode
-extern volatile uint8_t edit_mode_step_num;
-extern volatile uint8_t edit_mode_section;
-
-
 #define KEY_DEBOUNCE_COUNT 5  // 5 passes
 
 #define LONG_COUNTER_TICKS  30;

@@ -47,8 +47,7 @@ void InitClear_Timer() {
 // Functionality that needs to run both the main and modal loops
 void ControllerCommonAllLoops() {
   // Expensive to recalculate every tick, so do it here
-  afg1_step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());;
-  afg2_step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());;
+  AfgRecalculateStepWidths();
 
   // Shift adc mux if time
   if (controller_job_flags.adc_mux_shift_out) {
@@ -141,9 +140,9 @@ void ControllerMainLoop() {
     ControllerApplyProgrammingSwitches(&switches);
 
     // Update panel state
-    UpdateModeSectionLeds();
+    UpdateModeSectionLeds(AfgGetControllerState(AFG1), AfgGetControllerState(AFG2), edit_mode_section, edit_mode_step_num);
     display_update_flags.b.MainDisplay = 0;
-    UpdateStepSectionLeds();
+    UpdateStepSectionLeds(AfgGetControllerState(AFG1), AfgGetControllerState(AFG2), edit_mode_step_num);
     display_update_flags.b.StepsDisplay = 0;
 
 
@@ -171,15 +170,17 @@ void ControllerMainLoop() {
 }
 
 void ControllerApplyProgrammingSwitches(uButtons * key) {
-  unsigned char step_num = 0, section = 0;
+  AfgControllerState afg1 = AfgGetControllerState(AFG1);
+  AfgControllerState afg2 = AfgGetControllerState(AFG2);
+  uint8_t step_num = 0, section = 0;
 
   // Determine step num for different display modes
   if (display_mode == DISPLAY_MODE_VIEW_1) {
-    step_num = afg1_step_num;
-    section = afg1_section;
+    step_num = afg1.step_num;
+    section = afg1.section;
   } else if (display_mode == DISPLAY_MODE_VIEW_2) {
-    step_num = afg2_step_num;
-    section = afg2_section;
+    step_num = afg2.step_num;
+    section = afg2.section;
   } else if (display_mode == DISPLAY_MODE_EDIT_1 || display_mode == DISPLAY_MODE_EDIT_2) {
     step_num = edit_mode_step_num;
     section = edit_mode_section;
@@ -194,39 +195,39 @@ void ControllerProcessStageAddressSwitches(uButtons * key) {
 
   // Only do one of reset, strobe or advance
   if (!key->b.StageAddress1Reset) {
-    DoReset1();
+    AfgReset(AFG1);
     update_display();
   } else if (!key->b.StageAddress1PulseSelect) {
     signals1.strobe = 1;
-    ProcessModeChanges1(signals1);
+    AfgProcessModeChanges(AFG1, signals1);
   } else if (!key->b.StageAddress1Advance) {
     signals1.start = 1;
     signals1.stop = 1;
-    ProcessModeChanges1(signals1);
+    AfgProcessModeChanges(AFG1, signals1);
   }
 
   if (!key->b.StageAddress2Reset) {
-    DoReset2();
+    AfgReset(AFG2);
     update_display();
   } else if ( (!key->b.StageAddress2PulseSelect)) {
     signals2.strobe = 1;
-    ProcessModeChanges2(signals2);
+    AfgProcessModeChanges(AFG2, signals2);
   } else if (!key->b.StageAddress2Advance) {
     signals2.start = 1;
     signals2.stop = 1;
-    ProcessModeChanges2(signals2);
+    AfgProcessModeChanges(AFG2, signals2);
   };
 
   if (!key->b.StageAddress1ContiniousSelect) {
-    EnableContinuousStageAddress1();
+    EnableContinuousStageAddress(AFG1);
   } else {
-    DisableContinuousStageAddress1();
+    DisableContinuousStageAddress(AFG1);
   }
 
   if (!key->b.StageAddress2ContiniousSelect) {
-    EnableContinuousStageAddress2();
+    EnableContinuousStageAddress(AFG2);
   } else {
-    DisableContinuousStageAddress2();
+    DisableContinuousStageAddress(AFG2);
   }
 
   if (!key->b.ClearUp || !key->b.ClearDown) {
@@ -236,6 +237,9 @@ void ControllerProcessStageAddressSwitches(uButtons * key) {
 }
 
 void ControllerProcessNavigationSwitches(uButtons* key) {
+  AfgControllerState afg1 = AfgGetControllerState(AFG1);
+  AfgControllerState afg2 = AfgGetControllerState(AFG2);
+
   // Down counters which track the number of ticks of this method
   // before left and right switches should be processed again.
   // This enables some debouncing but also long press and hold to scroll.
@@ -252,7 +256,7 @@ void ControllerProcessNavigationSwitches(uButtons* key) {
   if (!key->b.StepLeft || !key->b.StepRight) {
     if (display_mode == DISPLAY_MODE_VIEW_1) {
       display_mode = DISPLAY_MODE_EDIT_1;
-      edit_mode_section = afg1_section;
+      edit_mode_section = afg1.section;
       edit_mode_step_num = 0;
       right_counter = SCROLL_WAIT_COUNTER;
       left_counter = SCROLL_WAIT_COUNTER;
@@ -260,7 +264,7 @@ void ControllerProcessNavigationSwitches(uButtons* key) {
     }
     else if (display_mode == DISPLAY_MODE_VIEW_2) {
       display_mode = DISPLAY_MODE_EDIT_2;
-      edit_mode_section = afg2_section;
+      edit_mode_section = afg2.section;
       edit_mode_step_num = 0;
       right_counter = SCROLL_WAIT_COUNTER;
       left_counter = SCROLL_WAIT_COUNTER;
@@ -271,19 +275,19 @@ void ControllerProcessNavigationSwitches(uButtons* key) {
   // Section shift for each afg in 16 slider mode
   if (!Is_Expander_Present()) {
     if (!key->b.StepLeft && !key->b.StageAddress1Display) {
-      afg1_section = 0;
+      AfgSetSection(AFG1, 0);
       display_mode = DISPLAY_MODE_VIEW_1;
       update_display();
     } else if (!key->b.StepRight && !key->b.StageAddress1Display) {
-      afg1_section = 1;
+      AfgSetSection(AFG1, 1);
       display_mode = DISPLAY_MODE_VIEW_1;
       update_display();
     } else if (!key->b.StepLeft && !key->b.StageAddress2Display) {
-      afg2_section = 0;
+      AfgSetSection(AFG2, 0);
       display_mode = DISPLAY_MODE_VIEW_2;
       update_display();
     } else if (!key->b.StepRight && !key->b.StageAddress2Display) {
-      afg2_section = 1;
+      AfgSetSection(AFG2, 1);
       display_mode = DISPLAY_MODE_VIEW_2;
       update_display();
     }
@@ -381,8 +385,8 @@ void ControllerCheckClear() {
 
     if (clear_counter1 == 30 || clear_counter2 == 30) {
       InitProgram();
-      HardStop1();
-      HardStop2();
+      AfgHardStop(AFG1);
+      AfgHardStop(AFG2);
     };
 
     clear_counter1 = 0;
@@ -533,24 +537,25 @@ void ControllerLoadProgramLoop() {
 
         // Pin sliders and reset to step 1
         pin_all_sliders();
-        DoReset1();
-        DoReset2();
+        AfgReset(AFG1);
+        AfgReset(AFG2);
 
         // Cute little animation
         RunLoadProgramAnimation();
         display_mode = DISPLAY_MODE_VIEW_1;
+        controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
         return;
       } else if (!switches.b.StageAddress1Display || !switches.b.StageAddress2Display) {
         // Abort load
         display_mode = DISPLAY_MODE_VIEW_1;
+        controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
         return;
       }
       previous_switches.value = switches.value;
     } else {
-      RunWaitingLoadSaveAnimation();
+      RunWaitingLoadSaveAnimation(AfgGetControllerState(AFG1), AfgGetControllerState(AFG2));
     }
   }
-  controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
 }
 
 // Save program loop
@@ -608,15 +613,17 @@ void ControllerSaveProgramLoop() {
         // Run cute animation
         RunSaveProgramAnimation();
         display_mode = DISPLAY_MODE_VIEW_1;
+        controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
         return;
       } else if (!switches.b.StageAddress1Display || !switches.b.StageAddress2Display) {
         // Abort save
         display_mode = DISPLAY_MODE_VIEW_1;
+        controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
         return;
       }
       previous_switches.value = switches.value;
     } else {
-      RunWaitingLoadSaveAnimation();
+      RunWaitingLoadSaveAnimation(AfgGetControllerState(AFG1), AfgGetControllerState(AFG2));
     }
   }
   controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
@@ -655,11 +662,11 @@ void ControllerScanAdcLoop() {
   // Disable all irq including the function generators
   __disable_irq();
   if (any_pulses_high(controller_job_flags.afg1_interrupts)) {
-    ProcessModeChanges1(controller_job_flags.afg1_interrupts);
+    AfgProcessModeChanges(AFG1, controller_job_flags.afg1_interrupts);
     controller_job_flags.afg1_interrupts = PULSE_INPUTS_NONE;
   }
   if (any_pulses_high(controller_job_flags.afg2_interrupts)) {
-    ProcessModeChanges2(controller_job_flags.afg2_interrupts);
+    AfgProcessModeChanges(AFG2, controller_job_flags.afg2_interrupts);
     controller_job_flags.afg2_interrupts = PULSE_INPUTS_NONE;
   }
 

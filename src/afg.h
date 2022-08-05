@@ -8,14 +8,10 @@
 
 #include <stm32f4xx.h>
 
-// Current step number
-extern volatile uint8_t afg1_step_num, afg2_step_num;
+// Defs for referencing which function generator when calling all afg functions
 
-// Length of the current step in timer "ticks"
-extern volatile uint32_t afg1_step_width, afg2_step_width;
-
-// Step counters
-extern volatile uint32_t afg1_step_cnt, afg2_step_cnt;
+#define AFG1 0
+#define AFG2 1
 
 // AFG modes
 
@@ -24,6 +20,28 @@ extern volatile uint32_t afg1_step_cnt, afg2_step_cnt;
 #define MODE_WAIT 2       // Continuous strobe mode. Better name?
 #define MODE_WAIT_HI_Z 3  // Running, but holding on enable step
 #define MODE_STAY_HI_Z 4  // Running, but holding on sustain step
+
+// Afg state
+typedef struct {
+  // Run mode, strictly one of the defs above
+  uint8_t mode;
+  // Previous mode, before going into MODE_WAIT (continuous stage address)
+  uint8_t prev_mode;
+  // The current step voltage level
+  uint16_t step_level;
+  // The sampled and held voltage level of the previous step
+  uint16_t prev_step_level;
+  // The step value derived from the stage address cv
+  uint8_t stage_address;
+  // The step section (normally 0 or 1 if shifted to 16-31)
+  uint8_t section;
+  // The current step number
+  uint8_t step_num;
+  // Number of ticks into the current step
+  uint32_t step_cnt;
+  // The length in ticks of the current step
+  uint32_t step_width;
+} AfgState;
 
 // Values of programmed output voltages
 typedef struct {
@@ -35,131 +53,38 @@ typedef struct {
   uint8_t pulse2:1;
 } ProgrammedOutputs;
 
-// Sequencer modes
-extern volatile unsigned char afg1_mode;
-extern volatile unsigned char afg2_mode;
-extern volatile unsigned char afg1_prev_mode;
-extern volatile unsigned char afg2_prev_mode;
-extern volatile unsigned char afg1_advance;
-extern volatile unsigned char afg2_advance;
-
-// The voltage level of the current step
-extern volatile unsigned int afg1_step_level;
-extern volatile unsigned int afg2_step_level;
-
-// The voltage level of the previous step
-extern volatile unsigned int afg1_prev_step_level;
-extern volatile unsigned int afg2_prev_step_level;
-
-// The stage address selected step
-extern volatile uint8_t afg1_stage_address;
-extern volatile uint8_t afg2_stage_address;
-
-// The offset into step programming for each afg [0-15][16-31] 0 or 1
-extern volatile uint8_t afg1_section;
-extern volatile uint8_t afg2_section;
-
-// Get the step num, taking into account section offset
-inline uint8_t get_afg1_step_num() {
-  return afg1_step_num + (afg1_section << 4);
-}
-
-// Get the step num, taking into account section offset
-inline uint8_t get_afg2_step_num() {
-  return afg2_step_num + (afg2_section << 4);
-}
-
+// Initial zero both afg states
 void AfgAllInitialize();
 
-// Jump steps
+// Get a snapshot of the afg state for coordination between controller and display
+AfgControllerState AfgGetControllerState(uint8_t afg_num);
 
-void JumpToStep1(unsigned int step);
-void JumpToStep2(unsigned int step);
+// Move the section programming offset to steps 0-15 or 16-31
+void AfgSetSection(uint8_t afg_num, uint8_t section);
 
 // Clock mode control from start, stop, strobe interrupts
-void ProcessPulseInputs1();
-void ProcessModeChanges1();
-
-void ProcessPulseInputs2();
-void ProcessModeChanges2();
+void AfgProcessModeChanges(uint8_t afg_num, PulseInputs pulses);
 
 // Check timer after handling start signal
-uint8_t CheckStart1();
-uint8_t CheckStart2();
+uint8_t AfgCheckStart(uint8_t afg_num, uint8_t start_signal);
 
-inline void HardStop1() {
-  afg1_mode = MODE_STOP;
-  afg1_step_num = 0;
-  afg1_step_cnt = 0xFFFFFFFF;
-}
+// Immediately jump to the given step
+void AfgJumpToStep(uint8_t afg_num, uint8_t step);
 
-inline void HardStop2() {
-  afg2_mode = MODE_STOP;
-  afg2_step_num = 0;
-  afg2_step_cnt = 0xFFFFFFFF;
-}
+// Hard stop and reset
+void AfgHardStop(uint8_t afg_num);
 
-inline void DoReset1() {
-  if (afg1_mode != MODE_WAIT) {
-    JumpToStep1(0);
-  }
-}
-
-inline void DoReset2() {
-  if (afg2_mode != MODE_WAIT) {
-    JumpToStep2(0);
-  }
-}
+// Reset to first step
+void AfgReset(uint8_t afg_num);
 
 // Process one time window
+ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses);
 
-ProgrammedOutputs AfgTick1();
-ProgrammedOutputs AfgTick2();
+// Go in and out of continuous state address mode
+void EnableContinuousStageAddress(uint8_t afg_num);
+void DisableContinuousStageAddress(uint8_t afg_num);
 
-// Compute continuous step stage selection
-
-inline void ComputeContinuousStep1() {
-  afg1_stage_address = read_calibrated_add_data_uint16(ADC_STAGEADDRESS_Ch_1) >> get_max_step_shift12();
-  if (afg1_stage_address > get_max_step()) afg1_stage_address = get_max_step();
-}
-
-inline void ComputeContinuousStep2() {
-  afg2_stage_address = read_calibrated_add_data_uint16(ADC_STAGEADDRESS_Ch_2) >> get_max_step_shift12();
-  if (afg2_stage_address > get_max_step()) afg2_stage_address = get_max_step();
-}
-
-inline void EnableContinuousStageAddress1() {
-  if (afg1_mode != MODE_WAIT) {
-    afg1_prev_mode = afg1_mode;
-    afg1_mode = MODE_WAIT;
-    update_main_display();
-  }
-}
-
-inline void DisableContinuousStageAddress1() {
-  if (afg1_mode == MODE_WAIT) {
-    afg1_mode = afg1_prev_mode;
-    update_display();
-  }
-}
-
-inline void EnableContinuousStageAddress2() {
-  if (afg2_mode != MODE_WAIT) {
-    afg2_prev_mode = afg2_mode;
-    afg2_mode = MODE_WAIT;
-    update_main_display();
-  }
-}
-
-inline void DisableContinuousStageAddress2() {
-  if (afg2_mode == MODE_WAIT) {
-    afg2_mode = afg2_prev_mode;
-    update_display();
-  }
-}
-
-float GetTimeMultiplier1();
-
-float GetTimeMultiplier2();
+// Calculate the length of the step, based on time settings and time multiplier
+void AfgRecalculateStepWidths();
 
 #endif

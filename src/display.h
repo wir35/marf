@@ -3,6 +3,8 @@
 
 #include <stm32f4xx.h>
 
+#include "program.h"
+
 // Union with flags which allows to update different parts of panel
 typedef union {
   struct {
@@ -52,10 +54,10 @@ inline void update_steps_display() {
 void DisplayAllInitialize();
 
 // Update display leds in programming section
-void UpdateModeSectionLeds();
+void UpdateModeSectionLeds(AfgControllerState afg1, AfgControllerState afg2, uint8_t edit_mode_step_section, uint8_t edit_mode_step_num);
 
 // Update step leds for normal op state
-void UpdateStepSectionLeds();
+void UpdateStepSectionLeds(AfgControllerState afg1, AfgControllerState afg2, uint8_t edit_mode_step_num);
 
 // Flush updates out to led shift registers
 void FlushLedUpdates();
@@ -70,7 +72,7 @@ void RunCalibrationAnimation();
 void RunSaveProgramAnimation();
 void RunLoadProgramAnimation();
 
-void RunWaitingLoadSaveAnimation();
+void RunWaitingLoadSaveAnimation(AfgControllerState afg1, AfgControllerState afg2);
 
 // Light a single step
 void StepLedsLightSingleStep(uint8_t step);

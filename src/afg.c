@@ -9,36 +9,48 @@
 #include "cycle_counter.h"
 #include "delays.h"
 
-// Current step number
-volatile uint8_t afg1_step_num = 0, afg2_step_num = 0;
+// Afg state. Volatile since control is frequently exchanged between interrupts and main loop.
+volatile AfgState afg1;
+volatile AfgState afg2;
 
-// Step tick counters
-volatile uint32_t afg1_step_cnt = 0, afg2_step_cnt = 0;
-volatile uint32_t afg1_step_width = 0, afg2_step_width = 0;
+// Convenience for addressing the two afgs from a uint8_t that is 0 or 1
+volatile AfgState *afgs[2] = { &afg1, &afg2 };
 
-// AFG modes
-volatile unsigned char afg1_mode = MODE_RUN;
-volatile unsigned char afg2_mode = MODE_RUN;
-volatile unsigned char afg1_prev_mode = MODE_RUN;
-volatile unsigned char afg2_prev_mode = MODE_RUN;
+void AfgAllInitialize() {
+  afg1.section = 0;
+  afg1.step_num = 0;
+  afg1.step_width = 1;
+  afg1.step_cnt = 0xFFFFFFFF;
+  afg1.mode = MODE_STOP;
+  afg1.prev_mode = MODE_STOP;
+  afg1.stage_address = 0;
+  afg1.step_level = 0;
+  afg1.prev_step_level = 0;
 
-// The voltage level of the current step
-volatile unsigned int afg1_step_level = 0;
-volatile unsigned int afg2_step_level = 0;
+  afg2.section = 0;
+  afg2.step_num = 0;
+  afg2.step_width = 1;
+  afg2.step_cnt = 0xFFFFFFFF;
+  afg2.mode = MODE_STOP;
+  afg2.prev_mode = MODE_STOP;
+  afg2.stage_address = 0;
+  afg2.step_level = 0;
+  afg2.prev_step_level = 0;
+}
 
-// The voltage level of the previous step
-volatile unsigned int afg1_prev_step_level = 0;
-volatile unsigned int afg2_prev_step_level = 0;
+AfgControllerState AfgGetControllerState(uint8_t afg_num) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
+  AfgControllerState state;
+  state.mode = afg->mode;
+  state.section = afg->section;
+  state.step_num = afg->step_num;
+  return state;
+}
 
-// The stage address selection step
-volatile uint8_t afg1_stage_address = 0;
-volatile uint8_t afg2_stage_address = 0;
-
-// The offset into step programming for each afg [0-15][16-31] 0 or 1
-volatile uint8_t afg1_section = 0;
-volatile uint8_t afg2_section = 0;
-
-#define START_STOP_WINDOW 4
+void AfgSetSection(uint8_t afg_num, uint8_t section) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
+  afg->section = section;
+}
 
 // Start Timer 3 for AFG1 start pulse duration measurement
 // Only used when going into enable/sustain
@@ -68,254 +80,225 @@ void InitStart_2_SignalTimer() {
   NVIC_EnableIRQ(TIM7_IRQn);
 };
 
-void AfgAllInitialize() {
-  afg1_section = 0;
-  afg1_step_num = 0;
-  afg1_step_cnt = 0xFFFFFFFF;
-  afg1_mode = MODE_STOP;
+void InitStartSignalTimer(uint8_t afg_num) {
+  if (afg_num == AFG1) InitStart_1_SignalTimer();
+  if (afg_num == AFG2) InitStart_2_SignalTimer();
+}
 
-  afg2_section = 0;
-  afg2_step_num = 0;
-  afg2_step_cnt = 0xFFFFFFFF;
-  afg2_mode = MODE_STOP;
+#define TIME_MULTIPLIER_SCALER 0.0009766
+
+float GetTimeMultiplier(uint8_t afg_num) {
+  if (afg_num == AFG1) {
+    return scale_time_fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_1)) * TIME_MULTIPLIER_SCALER;
+  } else if (afg_num == AFG2) {
+    return scale_time_fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_2)) * TIME_MULTIPLIER_SCALER;
+  } else {
+    return 0;
+  }
+}
+
+// Compute continuous step stage selection
+
+inline void ComputeContinuousStep(uint8_t afg_num) {
+  if (afg_num == AFG1) {
+    afg1.stage_address = read_calibrated_add_data_uint16(ADC_STAGEADDRESS_Ch_1) >> get_max_step_shift12();
+    if (afg1.stage_address > get_max_step()) afg1.stage_address = get_max_step();
+  } else if (afg_num == AFG2) {
+    afg2.stage_address = read_calibrated_add_data_uint16(ADC_STAGEADDRESS_Ch_2) >> get_max_step_shift12();
+    if (afg2.stage_address > get_max_step()) afg2.stage_address = get_max_step();
+  }
+}
+
+void AfgRecalculateStepWidths() {
+  afg1.step_width = GetStepWidth(afg1.section, afg1.step_num, GetTimeMultiplier(AFG1));
+  afg2.step_width = GetStepWidth(afg2.section, afg2.step_num, GetTimeMultiplier(AFG2));
 }
 
 // Triggered by timer when waiting on sustain or enable step.
 // Returns 1 when starting running again
-uint8_t CheckStart1() {
-  uint8_t start_signal = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1;
+uint8_t AfgCheckStart(uint8_t afg_num, uint8_t start_signal) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
   uint8_t run_again = 0;
 
-  if (afg1_mode == MODE_WAIT_HI_Z && start_signal) {
+  if (afg->mode == MODE_WAIT_HI_Z && start_signal) {
     // Enable with start high, start running
     run_again = 1;
   }
-  if (afg1_mode == MODE_STAY_HI_Z && !start_signal) {
+  if (afg->mode == MODE_STAY_HI_Z && !start_signal) {
     // Sustain step with start low, start running again
     run_again = 1;
   }
   if (run_again) {
-    afg1_mode = MODE_RUN;
-    afg1_step_num = GetNextStep(afg1_section, afg1_step_num);
-    afg1_step_cnt = 0;
+    afg->mode = MODE_RUN;
+    afg->step_num = GetNextStep(afg->section, afg->step_num);
+    afg->step_cnt = 0;
     return 1;
   } else {
     return 0;
   }
 }
 
-// Triggered by timer when waiting on sustain or enable step.
-// Returns 1 when starting running again
-uint8_t CheckStart2() {
-  uint8_t start_signal = GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1;
-  uint8_t run_again = 0;
-
-  if (afg2_mode == MODE_WAIT_HI_Z && start_signal) {
-    // Enable with start high, start running
-    run_again = 1;
-  }
-  if (afg2_mode == MODE_STAY_HI_Z && !start_signal) {
-    // Sustain step with start low, start running again
-    run_again = 1;
-  }
-  if (run_again) {
-    afg2_mode = MODE_RUN;
-    afg2_step_num = GetNextStep(afg2_section, afg2_step_num);
-    afg2_step_cnt = 0;
-    return 1;
-  } else {
-    return 0;
-  }
-}
-
-void JumpToStep1(unsigned int step) {
-  // unsigned int OutputVoltage = 0;
+void AfgJumpToStep(uint8_t afg_num, uint8_t step) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
 
   // Sample and hold current output voltage value.
-  afg1_prev_step_level = afg1_step_level;
+  afg->prev_step_level = afg->step_level;
 
   // Then update the step number to where ever we are strobing to
-  afg1_step_num = step;
+  afg->step_num = step;
 
   // Reset step counter
-  afg1_step_cnt = 0;
+  afg->step_cnt = 0;
 
   // Break out of some modes
-  if (afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
-    afg1_mode = afg1_prev_mode;
+  if (afg->mode == MODE_WAIT_HI_Z || afg->mode == MODE_STAY_HI_Z) {
+    afg->mode = afg->prev_mode;
   }
 
   update_display();
 }
 
-/* Handle jumping to new stage. Keep in sync with 1. */
-void JumpToStep2(unsigned int step) {
-  // unsigned int OutputVoltage = 0;
+void AfgHardStop(uint8_t afg_num) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
 
-  afg2_prev_step_level = afg2_step_level;
-  afg2_step_num = step;
-  afg2_step_cnt = 0;
+  afg->mode = MODE_STOP;
+  afg->step_num = 0;
+  afg->step_cnt = 0xFFFFFFFF;
+}
 
-  if (afg2_mode == MODE_WAIT_HI_Z || afg2_mode == MODE_STAY_HI_Z) {
-    afg2_mode = afg2_prev_mode;
+void AfgReset(uint8_t afg_num) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
+
+  if (afg->mode != MODE_WAIT) {
+    AfgJumpToStep(afg_num, 0);
   }
-  update_display();
 }
 
 // Process start, stop and strobe pulse inputs in reaction to an interrupt on any of them.
 // Since simultaneous pulses are meaningful, we process them all together.
-void ProcessModeChanges1(PulseInputs pulses) {
+void AfgProcessModeChanges(uint8_t afg_num, PulseInputs pulses) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
+
   if (pulses.strobe) {
     // Strobe to a step
-    JumpToStep1(afg1_stage_address);
+    AfgJumpToStep(afg_num, afg->stage_address);
     if (pulses.start) {
       // And start running
-      afg1_mode = MODE_RUN;
+      afg->mode = MODE_RUN;
     }
-  } else if (pulses.start && pulses.stop && afg1_mode != MODE_WAIT) {
+  } else if (pulses.start && pulses.stop && afg->mode != MODE_WAIT) {
     // Stop and start together are an advance.
     // Do not change the mode, but jump immediately to the next step.
-    JumpToStep1(GetNextStep(afg1_section, afg1_step_num));
+    AfgJumpToStep(afg_num, GetNextStep(afg->section, afg->step_num));
   } else if (pulses.start) {
-    if (afg1_mode == MODE_STOP) {
+    if (afg->mode == MODE_STOP) {
       // Start running
-      afg1_mode = MODE_RUN;
-      afg1_step_num = GetNextStep(afg1_section, afg1_step_num);
-      afg1_step_cnt = 0;
+      afg->mode = MODE_RUN;
+      afg->step_num = GetNextStep(afg->section, afg->step_num);
+      afg->step_cnt = 0;
       update_display();
-    } else if (afg1_mode == MODE_WAIT_HI_Z || afg1_mode == MODE_STAY_HI_Z) {
+    } else if (afg->mode == MODE_WAIT_HI_Z || afg->mode == MODE_STAY_HI_Z) {
       // If on sustain or enable step, check after timer
-      InitStart_1_SignalTimer(); // Calls CheckStart1() later
+      InitStartSignalTimer(afg_num); // Calls AfgCheckStart() later
     }
-  } else if (pulses.stop && afg1_mode == MODE_RUN) {
-    afg1_mode = MODE_STOP;
+  } else if (pulses.stop && afg->mode == MODE_RUN) {
+    afg->mode = MODE_STOP;
     update_display();
   }
 }
-
-void ProcessModeChanges2(PulseInputs pulses) {
-  if (pulses.strobe) {
-    // Strobe to a step
-    JumpToStep2(afg2_stage_address);
-    if (pulses.start) {
-      // And start running
-      afg2_mode = MODE_RUN;
-    }
-    update_display();
-  } else if (pulses.start && pulses.stop && afg2_mode != MODE_WAIT) {
-    // Stop and start together are an advance.
-    // Do not change the mode, but jump immediately to the next step.
-    JumpToStep2(GetNextStep(afg2_section, afg2_step_num));
-  } else if (pulses.start) {
-    if (afg2_mode == MODE_STOP) {
-      // Start running
-      afg2_mode = MODE_RUN;
-      afg2_step_num = GetNextStep(afg2_section, afg2_step_num);
-      afg2_step_cnt = 0;
-      update_display();
-    } else if (afg2_mode == MODE_WAIT_HI_Z || afg2_mode == MODE_STAY_HI_Z) {
-      // If on sustain or enable step, check after timer
-      InitStart_2_SignalTimer(); // Calls CheckStart2() later
-    }
-  } else if (pulses.stop && afg2_mode == MODE_RUN) {
-    afg2_mode = MODE_STOP;
-    update_display();
-  }
-}
-
 
 // Every tick triggers new output voltages and a check if the step has ended.
-ProgrammedOutputs AfgTick1() {
+ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
 
+  uStep step = get_step_programming(afg->section, afg->step_num);
   float delta_voltage = 0.0;
   uint16_t output_voltage = 0;
   uint8_t do_recalculate_step_width = 1;
   ProgrammedOutputs outputs;
 
   // Compute continuous stage address
-  ComputeContinuousStep1();
+  ComputeContinuousStep(afg_num);
 
-  if (afg1_step_cnt < afg1_step_width) {
-    afg1_step_cnt += 1;
+  if (afg->step_cnt < afg->step_width) {
+    afg->step_cnt += 1;
   }
 
   // Check if we're at the end of the step
-  if (afg1_mode == MODE_WAIT) {
+  if (afg->mode == MODE_WAIT) {
       // Continuous step address mode. Check if the step has changed by the stage address, not the timer.
-      if (afg1_step_num != (unsigned int) (afg1_stage_address)) {
+      if (afg->step_num != afg->stage_address) {
         // Sample and hold current voltage output value
-        afg1_prev_step_level = afg1_step_level;
-        afg1_step_num = (unsigned int) (afg1_stage_address);
+        afg->prev_step_level = afg->step_level;
+        afg->step_num = afg->stage_address;
         // Reset step counter
-        afg1_step_cnt = 0;
+        afg->step_cnt = 0;
         do_recalculate_step_width = 1;
       }
-  } else if ((afg1_step_cnt >= afg1_step_width)) {
+  } else if (afg->step_cnt >= afg->step_width) {
     // Sample and hold current step value into PreviousStep for next step slope computation
-    afg1_prev_step_level = afg1_step_level;
+    afg->prev_step_level = afg->step_level;
 
-    // Pin step count to max value to stop ref
-    afg1_step_cnt = 0xFFFFFFFF;
+    // Pin step count to max value to stop the reference
+    afg->step_cnt = 0xFFFFFFFF;
 
-    if (get_step_programming(afg1_section, afg1_step_num).b.OpModeSTOP) {
+    if (step.b.OpModeSTOP) {
       // Stop step
-      afg1_mode = MODE_STOP;
+      afg->mode = MODE_STOP;
       // Don't reset step counter
     };
 
-    if (get_step_programming(afg1_section, afg1_step_num).b.OpModeENABLE
-        && afg1_mode != MODE_WAIT_HI_Z)  {
+    if (step.b.OpModeENABLE && afg->mode != MODE_WAIT_HI_Z)  {
       // Enable step, check start banana
-      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 0)) {
+      if (pulses.start == 0) {
         // Go into enable mode
-        afg1_prev_mode = afg1_mode;
-        afg1_mode = MODE_WAIT_HI_Z;
+        afg->prev_mode = afg->mode;
+        afg->mode = MODE_WAIT_HI_Z;
       };
-      afg1_step_cnt = 0; // Reset step counter
+      afg->step_cnt = 0; // Reset step counter
     };
 
-    if (get_step_programming(afg1_section, afg1_step_num).b.OpModeSUSTAIN
-        && afg1_mode != MODE_STAY_HI_Z) {
+    if (step.b.OpModeSUSTAIN && afg->mode != MODE_STAY_HI_Z) {
       // Sustain step, check start banana
-      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_8) == 1)) {
+      if (pulses.start == 1) {
         // Go into sustain mode
-        afg1_prev_mode = afg1_mode;
-        afg1_mode = MODE_STAY_HI_Z;
-        InitStart_1_SignalTimer();
+        afg->prev_mode = afg->mode;
+        afg->mode = MODE_STAY_HI_Z;
+        InitStartSignalTimer(afg_num); // Check continuously by timer for start to go low
       };
       // Don't reset step counter
     };
 
-    if (afg1_mode == MODE_RUN) {
+    if (afg->mode == MODE_RUN) {
       // Advance to the next step
-      afg1_step_num = GetNextStep(afg1_section, afg1_step_num);
-      afg1_step_cnt = 0; // Reset step counter
+      afg->step_num = GetNextStep(afg->section, afg->step_num);
+      afg->step_cnt = 0; // Reset step counter
       do_recalculate_step_width = 1;
     };
   };
 
   // Now set output voltages
   // Compute the current step's programmed voltage output
-  output_voltage = GetStepVoltage(afg1_section, afg1_step_num);
+  output_voltage = GetStepVoltage(afg->section, afg->step_num);
 
-  // Set AFG1 time out value
-  outputs.time = get_time_slider_level(afg1_step_num) >> 2;
+  // Set AFG time out value
+  outputs.time = get_time_slider_level(afg->step_num) >> 2;
 
-  if (afg1_step_cnt < afg1_step_width) {
+  if (afg->step_cnt < afg->step_width) {
     // Set AFG1 reference out value
     // (Slopes down from 1023 to 0 over the course of the step)
-    outputs.ref = 1023 - (uint16_t) ((afg1_step_cnt << 10) / afg1_step_width);
+    outputs.ref = 1023 - (uint16_t) ((afg->step_cnt << 10) / afg->step_width);
 
-    // If the step is sloped, then slope from PreviousStep to the new output value
-    if (get_step_programming(afg1_section, afg1_step_num).b.Sloped ) {
-      if (afg1_prev_step_level >= output_voltage) {
+    // If the step is sloped, then slope from prev_step_level to the new output value
+    if (step.b.Sloped ) {
+      if (afg->prev_step_level >= output_voltage) {
         // Slope down
-        delta_voltage = (float) (afg1_prev_step_level - output_voltage) / afg1_step_width;
-        output_voltage = afg1_prev_step_level - (uint16_t) (delta_voltage * afg1_step_cnt);
-      } else if (output_voltage > afg1_prev_step_level) {
+        delta_voltage = (float) (afg->prev_step_level - output_voltage) / afg->step_width;
+        output_voltage = afg->prev_step_level - (uint16_t) (delta_voltage * afg->step_cnt);
+      } else if (output_voltage > afg->prev_step_level) {
         // Slope up
-        delta_voltage = (float) (output_voltage - afg1_prev_step_level) / afg1_step_width;
-        output_voltage = afg1_prev_step_level + (uint16_t) (delta_voltage * afg1_step_cnt);
+        delta_voltage = (float) (output_voltage - afg->prev_step_level) / afg->step_width;
+        output_voltage = afg->prev_step_level + (uint16_t) (delta_voltage * afg->step_cnt);
       }
     }
   } else {
@@ -323,134 +306,45 @@ ProgrammedOutputs AfgTick1() {
     outputs.ref = 0;
   }
 
-  afg1_step_level = output_voltage;
+  afg->step_level = output_voltage;
   outputs.voltage = output_voltage;
 
-  if (afg1_step_cnt > PULSE_ACTIVE_STEP_WIDTH) {
+  if (afg->step_cnt > PULSE_ACTIVE_STEP_WIDTH) {
     outputs.all_pulses = 0;
     outputs.pulse1 = 0;
     outputs.pulse2 = 0;
   } else {
     outputs.all_pulses = 1;
-    outputs.pulse1 = get_step_programming(afg1_section, afg1_step_num).b.OutputPulse1;
-    outputs.pulse2 = get_step_programming(afg1_section, afg1_step_num).b.OutputPulse2;
+    outputs.pulse1 = step.b.OutputPulse1;
+    outputs.pulse2 = step.b.OutputPulse2;
   }
 
   if (do_recalculate_step_width) {
-    afg1_step_width = GetStepWidth(afg1_section, afg1_step_num, GetTimeMultiplier1());
-    if (display_mode == DISPLAY_MODE_VIEW_1) update_display();
+    afg->step_width = GetStepWidth(afg->section, afg->step_num, GetTimeMultiplier(afg_num));
+    update_display();
   }
 
   return outputs;
 };
 
-// Keep duplicated logic in sync with above
-ProgrammedOutputs AfgTick2() {
+void EnableContinuousStageAddress(uint8_t afg_num) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
 
-  float delta_voltage = 0.0;
-  uint16_t output_voltage = 0;
-  uint8_t do_recalculate_step_width = 1;
-  ProgrammedOutputs outputs;
-
-  ComputeContinuousStep2();
-
-  if (afg2_step_cnt < afg2_step_width) {
-    afg2_step_cnt += 1;
+  if (afg->mode != MODE_WAIT) {
+    afg->prev_mode = afg->mode;
+    afg->mode = MODE_WAIT;
+    update_main_display();
   }
-
-  if (afg2_mode == MODE_WAIT) {
-    if (afg2_step_num != (unsigned int) (afg2_stage_address)) {
-      // Sample and hold current voltage output value
-      afg2_prev_step_level = afg2_step_level;
-      afg2_step_num = (unsigned int) (afg2_stage_address);
-      // Reset step counter
-      afg2_step_cnt = 0;
-      do_recalculate_step_width = 1;
-    }
-  } else if (afg2_step_cnt >= afg2_step_width) {
-    afg2_step_cnt = 0xFFFFFFFF;
-    afg2_prev_step_level = afg2_step_level;
-
-    if (get_step_programming(afg2_section, afg2_step_num).b.OpModeSTOP) {
-      afg2_mode = MODE_STOP;
-    }
-
-    if (get_step_programming(afg2_section, afg2_step_num).b.OpModeENABLE
-        && afg2_mode != MODE_WAIT_HI_Z) {
-      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 0)) {
-        afg2_prev_mode = afg2_mode;
-        afg2_mode = MODE_WAIT_HI_Z;
-      };
-      afg2_step_cnt = 0;
-    }
-
-    if ((get_step_programming(afg2_section, afg2_step_num).b.OpModeSUSTAIN
-        && afg2_mode != MODE_STAY_HI_Z)) {
-      if ((GPIO_ReadInputDataBit(GPIOB, GPIO_Pin_6) == 1)) {
-        afg2_prev_mode = afg2_mode;
-        afg2_mode = MODE_STAY_HI_Z;
-        InitStart_2_SignalTimer();
-      }
-    }
-
-    if (afg2_mode == MODE_RUN) {
-      afg2_step_num = GetNextStep(afg2_section, afg2_step_num);
-      afg2_step_cnt = 0;
-      do_recalculate_step_width = 1;
-    }
-  }
-
-  output_voltage = GetStepVoltage(afg2_section, afg2_step_num);
-  outputs.time = get_time_slider_level(afg2_step_num) >> 2;
-
-  if (afg2_step_cnt < afg2_step_width) {
-    outputs.ref = 1023 - (uint16_t) ((afg2_step_cnt << 10) / afg2_step_width);
-
-    if (get_step_programming(afg2_section, afg2_step_num).b.Sloped ) {
-      if (afg2_prev_step_level >= output_voltage) {
-        // Slope down
-        delta_voltage = (float) (afg2_prev_step_level - output_voltage) / afg2_step_width;
-        output_voltage = afg2_prev_step_level - (unsigned int) (delta_voltage * afg2_step_cnt);
-      } else if (output_voltage > afg2_prev_step_level) {
-        // Slope up
-        delta_voltage =  (float) (output_voltage - afg2_prev_step_level) / afg2_step_width;
-        output_voltage = afg2_prev_step_level + (unsigned int) (delta_voltage * afg2_step_cnt);
-      }
-    }
-  } else {
-    outputs.ref = 0;
-  }
-
-  afg2_step_level = output_voltage;
-  outputs.voltage = output_voltage;
-
-  if (afg2_step_cnt > PULSE_ACTIVE_STEP_WIDTH) {
-    outputs.all_pulses = 0;
-    outputs.pulse1 = 0;
-    outputs.pulse2 = 0;
-  } else {
-    outputs.all_pulses = 1;
-    outputs.pulse1 = get_step_programming(afg2_section, afg2_step_num).b.OutputPulse1;
-    outputs.pulse2 = get_step_programming(afg2_section, afg2_step_num).b.OutputPulse2;
-  }
-
-  if (do_recalculate_step_width) {
-    afg2_step_width = GetStepWidth(afg2_section, afg2_step_num, GetTimeMultiplier2());
-    if (display_mode == DISPLAY_MODE_VIEW_2) update_display();
-  }
-
-  return outputs;
-};
-
-#define TIME_MULTIPLIER_SCALER 0.0009766
-
-float GetTimeMultiplier1() {
-  return scale_time_fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_1)) * TIME_MULTIPLIER_SCALER;
 }
 
-float GetTimeMultiplier2() {
-  return scale_time_fake_log2(read_calibrated_add_data_float(ADC_TIMEMULTIPLY_Ch_2)) * TIME_MULTIPLIER_SCALER;
-}
+void DisableContinuousStageAddress(uint8_t afg_num) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
 
+  if (afg->mode == MODE_WAIT) {
+    afg->mode = afg->prev_mode;
+    afg->prev_mode = MODE_WAIT;
+    update_display();
+  }
+}
 
 
