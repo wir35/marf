@@ -313,6 +313,7 @@ void TIM4_IRQHandler() {
   // Send data to external dac at 1/16 the rate
   if (tick_counter == 0) {
     MAX5135_DAC_send(MAX5135_DAC_CH_0, controller_job_flags.afg1_outputs.time);
+  } else if (tick_counter == 4) {
     MAX5135_DAC_send(MAX5135_DAC_CH_1, controller_job_flags.afg1_outputs.ref);
     controller_job_flags.afg1_tick = 0;
   }
@@ -351,8 +352,9 @@ void TIM5_IRQHandler() {
   __enable_irq();
 
   // Send data to external dac at 1/16 the rate
-  if (tick_counter == 0) {
+  if (tick_counter == 7) {
     MAX5135_DAC_send(MAX5135_DAC_CH_2, controller_job_flags.afg2_outputs.time);
+  } else if (tick_counter == 13) {
     MAX5135_DAC_send(MAX5135_DAC_CH_3, controller_job_flags.afg2_outputs.ref);
   }
   tick_counter = (tick_counter + 1) & 0x0F;

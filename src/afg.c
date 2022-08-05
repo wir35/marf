@@ -217,8 +217,7 @@ ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses) {
   uint8_t do_recalculate_step_width = 1;
   ProgrammedOutputs outputs;
 
-  // Compute continuous stage address
-  ComputeContinuousStep(afg_num);
+
 
   if (afg->step_cnt < afg->step_width) {
     afg->step_cnt += 1;
@@ -226,15 +225,18 @@ ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses) {
 
   // Check if we're at the end of the step
   if (afg->mode == MODE_WAIT) {
-      // Continuous step address mode. Check if the step has changed by the stage address, not the timer.
-      if (afg->step_num != afg->stage_address) {
-        // Sample and hold current voltage output value
-        afg->prev_step_level = afg->step_level;
-        afg->step_num = afg->stage_address;
-        // Reset step counter
-        afg->step_cnt = 0;
-        do_recalculate_step_width = 1;
-      }
+    // Compute continuous stage address
+    ComputeContinuousStep(afg_num);
+
+    // Check if the step has changed by the stage address, not the timer.
+    if (afg->step_num != afg->stage_address) {
+      // Sample and hold current voltage output value
+      afg->prev_step_level = afg->step_level;
+      afg->step_num = afg->stage_address;
+      // Reset step counter
+      afg->step_cnt = 0;
+      do_recalculate_step_width = 1;
+    }
   } else if (afg->step_cnt >= afg->step_width) {
     // Sample and hold current step value into PreviousStep for next step slope computation
     afg->prev_step_level = afg->step_level;
