@@ -181,6 +181,7 @@ void AfgProcessModeChanges(uint8_t afg_num, PulseInputs pulses) {
 
   if (pulses.strobe) {
     // Strobe to a step
+    ComputeContinuousStep(afg_num);
     AfgJumpToStep(afg_num, afg->stage_address);
     if (pulses.start) {
       // And start running
