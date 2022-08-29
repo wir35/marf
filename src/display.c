@@ -226,7 +226,7 @@ void RunSaveProgramAnimation() {
   mode_leds_lit.b.VoltageFull = 0;
   mode_leds_lit.b.VoltageSource = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(10);
+  delay_ms(50);
   // Second row
   mode_leds_lit.b.Voltage0 = 0;
   mode_leds_lit.b.Voltage2 = 0;
@@ -234,7 +234,7 @@ void RunSaveProgramAnimation() {
   mode_leds_lit.b.Voltage6 = 0;
   mode_leds_lit.b.Voltage8 = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(10);
+  delay_ms(50);
   // Third row
   mode_leds_lit.b.OPStop = 0;
   mode_leds_lit.b.OPSustain = 0;
@@ -242,7 +242,7 @@ void RunSaveProgramAnimation() {
   mode_leds_lit.b.CycleFirst = 0;
   mode_leds_lit.b.CycleLast = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(10);
+  delay_ms(50);
   // Fourth row
   mode_leds_lit.b.TimeRange0 = 0;
   mode_leds_lit.b.TimeRange1 = 0;
@@ -250,7 +250,7 @@ void RunSaveProgramAnimation() {
   mode_leds_lit.b.TimeRange1 = 0;
   mode_leds_lit.b.TimeSource = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(10);
+  delay_ms(50);
   // Reset all off
   mode_leds_lit.value[0] = 0xFF;
   mode_leds_lit.value[1] = 0xFF;
@@ -276,7 +276,7 @@ void RunLoadProgramAnimation() {
   mode_leds_lit.b.TimeRange1 = 0;
   mode_leds_lit.b.TimeSource = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(10);
+  delay_ms(50);
   // Third row
   mode_leds_lit.b.OPStop = 0;
   mode_leds_lit.b.OPSustain = 0;
@@ -284,7 +284,7 @@ void RunLoadProgramAnimation() {
   mode_leds_lit.b.CycleFirst = 0;
   mode_leds_lit.b.CycleLast = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(10);
+  delay_ms(50);
   // Second row
   mode_leds_lit.b.Voltage0 = 0;
   mode_leds_lit.b.Voltage2 = 0;
@@ -292,14 +292,14 @@ void RunLoadProgramAnimation() {
   mode_leds_lit.b.Voltage6 = 0;
   mode_leds_lit.b.Voltage8 = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(10);
+  delay_ms(50);
   // Flash first row
   mode_leds_lit.b.Quantization = 0;
   mode_leds_lit.b.Integration = 0;
   mode_leds_lit.b.VoltageFull = 0;
   mode_leds_lit.b.VoltageSource = 0;
   LEDS_modes_SendStruct(&mode_leds_lit);
-  delay_ms(10);
+  delay_ms(50);
   // Reset all off
   mode_leds_lit.value[0] = 0xFF;
   mode_leds_lit.value[1] = 0xFF;

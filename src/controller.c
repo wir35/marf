@@ -158,9 +158,11 @@ void ControllerMainLoop() {
     if (controller_job_flags.modal_loop == CONTROLLER_MODAL_LOAD) {
       // Sub loop for load program
       ControllerLoadProgramLoop(); // only exits when done
+      delay_ms(500);
     } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SAVE) {
       // Save program
       ControllerSaveProgramLoop(); // only exits when done
+      delay_ms(500);
     } else if (controller_job_flags.modal_loop == CONTROLLER_MODAL_SCAN) {
       // Scan the adc2 inputs before processing a pulse in
       ControllerScanAdcLoop(); // only exits when done
@@ -554,6 +556,7 @@ void ControllerLoadProgramLoop() {
       previous_switches.value = switches.value;
     } else {
       RunWaitingLoadSaveAnimation(AfgGetControllerState(AFG1), AfgGetControllerState(AFG2));
+      delay_us(500);
     }
   }
 }
@@ -624,6 +627,7 @@ void ControllerSaveProgramLoop() {
       previous_switches.value = switches.value;
     } else {
       RunWaitingLoadSaveAnimation(AfgGetControllerState(AFG1), AfgGetControllerState(AFG2));
+      delay_us(500);
     }
   }
   controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
