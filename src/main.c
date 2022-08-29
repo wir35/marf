@@ -295,9 +295,7 @@ void TIM4_IRQHandler() {
   if (tick_counter == 0) {
     ticks_left = AfgGetStepTicksRemaining(AFG1);
     tick_counter = (ticks_left < TICKS_WINDOW) ? ticks_left : TICKS_WINDOW;
-    if (tick_counter == 0) {
-      tick_counter = 1;
-    }
+
     // Process one time window and return the programmed output levels
     afg1_outputs = AfgTick(AFG1, get_afg1_pulse_inputs(), tick_counter);
 

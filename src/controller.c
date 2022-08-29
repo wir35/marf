@@ -678,8 +678,8 @@ void ControllerScanAdcLoop() {
   AdcMuxReset();
   delay_us(10);
   controller_job_flags.adc_pot_sel = 0;
-  controller_job_flags.adc_mux_shift_out = 0;
-  controller_job_flags.inhibit_adc = 0;
+  controller_job_flags.adc_mux_shift_out = 1;
+  controller_job_flags.inhibit_adc = 1;
   controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
   __enable_irq();
   adc_resume();
