@@ -23,35 +23,43 @@
 
 // Afg state
 typedef struct {
+  // The current step voltage level
+  float step_level;
+  // The sampled and held voltage level of the previous step
+  float prev_step_level;
+  // Number of ticks into the current step
+  uint32_t step_cnt;
+  // The length in ticks of the current step
+  uint32_t step_width;
   // Run mode, strictly one of the defs above
   uint8_t mode;
   // Previous mode, before going into MODE_WAIT (continuous stage address)
   uint8_t prev_mode;
-  // The current step voltage level
-  uint16_t step_level;
-  // The sampled and held voltage level of the previous step
-  uint16_t prev_step_level;
   // The step value derived from the stage address cv
   uint8_t stage_address;
   // The step section (normally 0 or 1 if shifted to 16-31)
   uint8_t section;
   // The current step number
   uint8_t step_num;
-  // Number of ticks into the current step
-  uint32_t step_cnt;
-  // The length in ticks of the current step
-  uint32_t step_width;
 } AfgState;
 
 // Values of programmed output voltages
 typedef struct {
-  uint16_t voltage;
+  float voltage;
   uint16_t time;
   uint16_t ref;
+  // Boolean flags
   uint8_t all_pulses:1;
   uint8_t pulse1:1;
   uint8_t pulse2:1;
+  uint8_t sloped:1;
 } ProgrammedOutputs;
+
+typedef struct {
+  float level;
+  float target_level;
+  float increment;
+} SlopingOutput;
 
 // Initial zero both afg states
 void AfgAllInitialize();
@@ -78,7 +86,7 @@ void AfgHardStop(uint8_t afg_num);
 void AfgReset(uint8_t afg_num);
 
 // Process one time window
-ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses);
+ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses, uint8_t ticks);
 
 // Go in and out of continuous state address mode
 void EnableContinuousStageAddress(uint8_t afg_num);
@@ -86,5 +94,9 @@ void DisableContinuousStageAddress(uint8_t afg_num);
 
 // Calculate the length of the step, based on time settings and time multiplier
 void AfgRecalculateStepWidths();
+
+// Get the number of ticks remaining in the current step.
+// A return value of 0xFFFFFFFF indicates that the step is ended.
+uint32_t AfgGetStepTicksRemaining(uint8_t afg_num);
 
 #endif

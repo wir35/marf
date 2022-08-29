@@ -8,6 +8,7 @@
 #include "expander.h"
 #include "analog_data.h"
 #include "HC165.h"
+#include "constants.h"
 
 // Main structure for step data type
 typedef union
@@ -98,7 +99,7 @@ void WriteTimeSlider(uint8_t slider_num, uint32_t new_adc_reading);
 void WriteOtherCv(uint8_t cv_num, uint32_t new_adc_reading);
 
 // Return the voltage for step number in section
-uint16_t GetStepVoltage(uint8_t section, uint8_t step_num);
+float GetStepVoltage(uint8_t section, uint8_t step_num);
 
 // The time multiplier panel is marked for log scale (0.5, 1, 2, 4) but linear pots are used.
 
@@ -122,20 +123,6 @@ inline float scale_time_fake_log2(float linear_val) {
 inline uint16_t get_time_slider_level(uint8_t slider_num) {
   return sliders[slider_num].TLevel;
 }
-
-// Timing constants
-
-// AFG updates its state at 32kHz
-#define AFG_TICK_FREQUENCY  32000
-
-// Prescaler value for the timers that drive the AFG ticks
-#define AFG_TIMER_PRESCALER ( 168000000 / AFG_TICK_FREQUENCY / 4 ) // 4 = APB prescaler
-
-#define STEP_WIDTH_2S (AFG_TICK_FREQUENCY * 2.0)
-#define STEP_WIDTH_28S (AFG_TICK_FREQUENCY * 28.0)
-#define RECIPROCAL_12BIT (1.0 / 4096.0)
-
-#define PULSE_ACTIVE_STEP_WIDTH (AFG_TICK_FREQUENCY / 1000) // 1 ms
 
 uint32_t GetStepWidth(uint8_t section, uint8_t step_num, float time_multiplier);
 

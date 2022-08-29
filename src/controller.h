@@ -25,14 +25,6 @@ typedef struct  {
   // Flag that the controller is shifting the mux and adc reads are invalid
   uint8_t inhibit_adc;
 
-  // Flag that the afg1 tick irq has refreshed the output data
-  uint8_t afg1_tick;
-  ProgrammedOutputs afg1_outputs;
-
-  // Flag that the afg2 tick irq has refreshed the output data
-  uint8_t afg2_tick;
-  ProgrammedOutputs afg2_outputs;
-
   // Flags that we are going into a modal loop
   uint8_t modal_loop;
 

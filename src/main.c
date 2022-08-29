@@ -23,6 +23,7 @@
 #include "controller.h"
 #include "cycle_counter.h"
 #include "eprom.h"
+#include "constants.h"
 
 // Dip switch state
 volatile uDipConfig dip_config;
@@ -280,84 +281,140 @@ void EXTI9_5_IRQHandler() {
 	Every interrupt of Timer 4 triggers new output voltages and a check if the step has ended.
  */
 void TIM4_IRQHandler() {
+  ProgrammedOutputs afg1_outputs;
+  static SlopingOutput sloping_output;
   static uint8_t tick_counter = 0;
+  uint32_t ticks_left = 0;
 
   // Clear interrupt flag for Timer 4
   TIM4->SR = (uint16_t) ~TIM_IT_Update;
   __disable_irq();
 
-  // Process one time window and return the programmed output levels
-  controller_job_flags.afg1_outputs = AfgTick(AFG1, get_afg1_pulse_inputs());
+  // We will recalculate the function every TICKS_WINDOW (32) ticks.
+  // If the step has less ticks than that left, then process only until the end of the step.
+  if (tick_counter == 0) {
+    ticks_left = AfgGetStepTicksRemaining(AFG1);
+    tick_counter = (ticks_left < TICKS_WINDOW) ? ticks_left : TICKS_WINDOW;
+    if (tick_counter == 0) {
+      tick_counter = 1;
+    }
+    // Process one time window and return the programmed output levels
+    afg1_outputs = AfgTick(AFG1, get_afg1_pulse_inputs(), tick_counter);
+
+    // Configure the sloping output to interpolate over the window
+    if (afg1_outputs.sloped) {
+      sloping_output.level = sloping_output.target_level;
+      sloping_output.target_level = afg1_outputs.voltage;
+      sloping_output.increment =
+          (sloping_output.target_level - sloping_output.level) /
+          (float) tick_counter;
+    } else {
+      sloping_output.level = afg1_outputs.voltage;
+      sloping_output.target_level = afg1_outputs.voltage;
+      sloping_output.increment = 0.0;
+    }
+
+    // Update output pulses
+    if (afg1_outputs.all_pulses) {
+      PULSE_LED_I_ALL_ON;
+    } else {
+      PULSE_LED_I_ALL_OFF;
+    }
+    if (afg1_outputs.pulse1) {
+      PULSE_LED_I_1_ON;
+    } else {
+      PULSE_LED_I_1_OFF;
+    }
+    if (afg1_outputs.pulse2) {
+      PULSE_LED_I_2_ON;
+    } else {
+      PULSE_LED_I_2_OFF;
+    }
+
+    // Update the external dacs (slow)
+    MAX5135_DAC_send(MAX5135_DAC_CH_0, afg1_outputs.time);
+    MAX5135_DAC_send(MAX5135_DAC_CH_1, afg1_outputs.ref);
+  }
+
+  // Interpolate output
+  sloping_output.level += sloping_output.increment;
 
   // Update internal dac (fast)
-  DAC_SetChannel1Data(DAC_Align_12b_R, controller_job_flags.afg1_outputs.voltage);
+  DAC_SetChannel1Data(DAC_Align_12b_R,
+      (uint16_t) sloping_output.level + 0.5);
 
-  // Update output pulses
-  if (controller_job_flags.afg1_outputs.all_pulses) {
-    PULSE_LED_I_ALL_ON;
-  } else {
-    PULSE_LED_I_ALL_OFF;
-  }
-  if (controller_job_flags.afg1_outputs.pulse1) {
-    PULSE_LED_I_1_ON;
-  } else {
-    PULSE_LED_I_1_OFF;
-  }
-  if (controller_job_flags.afg1_outputs.pulse2) {
-    PULSE_LED_I_2_ON;
-  } else {
-    PULSE_LED_I_2_OFF;
-  }
+  tick_counter -= 1;
   __enable_irq();
-
-  // Send data to external dac at 1/16 the rate
-  if (tick_counter == 0) {
-    MAX5135_DAC_send(MAX5135_DAC_CH_0, controller_job_flags.afg1_outputs.time);
-  } else if (tick_counter == 4) {
-    MAX5135_DAC_send(MAX5135_DAC_CH_1, controller_job_flags.afg1_outputs.ref);
-    controller_job_flags.afg1_tick = 0;
-  }
-  tick_counter = (tick_counter + 1) & 0x0F;
 };
 
 /*
   Timer interrupt handler for AFG2 clock.
-  Keep in sync with TIM4_IRQHandler().
+  Keep changes in sync with TIM4_IRQHandler().
  */
 void TIM5_IRQHandler() {
+  ProgrammedOutputs afg2_outputs;
+  static SlopingOutput sloping_output;
   static uint8_t tick_counter = 0;
+  uint32_t ticks_left = 0;
 
   // Clear interrupt flag for Timer 5
   TIM5->SR = (uint16_t) ~TIM_IT_Update;
   __disable_irq();
-  controller_job_flags.afg2_outputs = AfgTick(AFG2, get_afg2_pulse_inputs());
 
-  if (controller_job_flags.afg2_outputs.all_pulses) {
-    PULSE_LED_II_ALL_ON;
-  } else {
-    PULSE_LED_II_ALL_OFF;
-  }
-  if (controller_job_flags.afg2_outputs.pulse1) {
-    PULSE_LED_II_1_ON;
-  } else {
-    PULSE_LED_II_1_OFF;
-  }
-  if (controller_job_flags.afg2_outputs.pulse2) {
-    PULSE_LED_II_2_ON;
-  } else {
-    PULSE_LED_II_2_OFF;
+  // We will recalculate the function every TICKS_WINDOW (32) ticks.
+  // If the step has less ticks than that left, then process only until the end of the step.
+  if (tick_counter == 0) {
+     ticks_left = AfgGetStepTicksRemaining(AFG2);
+     tick_counter = (ticks_left < TICKS_WINDOW) ? ticks_left : TICKS_WINDOW;
+
+     // Process one time window and return the programmed output levels
+     afg2_outputs = AfgTick(AFG2, get_afg2_pulse_inputs(), tick_counter);
+
+     // Configure the sloping output to interpolate over the window
+     if (afg2_outputs.sloped) {
+       sloping_output.level = sloping_output.target_level;
+       sloping_output.target_level = afg2_outputs.voltage;
+       sloping_output.increment =
+           (sloping_output.target_level - sloping_output.level) /
+           (float) tick_counter;
+     } else {
+       sloping_output.level = afg2_outputs.voltage;
+       sloping_output.target_level = afg2_outputs.voltage;
+       sloping_output.increment = 0.0;
+     }
+
+     // Update output pulses
+     if (afg2_outputs.all_pulses) {
+       PULSE_LED_II_ALL_ON;
+     } else {
+       PULSE_LED_II_ALL_OFF;
+     }
+     if (afg2_outputs.pulse1) {
+       PULSE_LED_II_1_ON;
+     } else {
+       PULSE_LED_II_1_OFF;
+     }
+     if (afg2_outputs.pulse2) {
+       PULSE_LED_II_2_ON;
+     } else {
+       PULSE_LED_II_2_OFF;
+     }
+
+     // Update the external dacs (slow)
+     MAX5135_DAC_send(MAX5135_DAC_CH_2, afg2_outputs.time);
+     MAX5135_DAC_send(MAX5135_DAC_CH_3, afg2_outputs.ref);
   }
 
-  DAC_SetChannel2Data(DAC_Align_12b_R, controller_job_flags.afg2_outputs.voltage);
+  // Interpolate output
+  sloping_output.level += sloping_output.increment;
+
+  // Update internal dac (fast)
+  // TODO(maxlord): slope this if in a sloping function
+  DAC_SetChannel2Data(DAC_Align_12b_R,
+      (uint16_t) sloping_output.level + 0.5);
+
+  tick_counter -= 1;
   __enable_irq();
-
-  // Send data to external dac at 1/16 the rate
-  if (tick_counter == 7) {
-    MAX5135_DAC_send(MAX5135_DAC_CH_2, controller_job_flags.afg2_outputs.time);
-  } else if (tick_counter == 13) {
-    MAX5135_DAC_send(MAX5135_DAC_CH_3, controller_job_flags.afg2_outputs.ref);
-  }
-  tick_counter = (tick_counter + 1) & 0x0F;
 };
 
 

@@ -19,7 +19,7 @@ volatile AfgState *afgs[2] = { &afg1, &afg2 };
 void AfgAllInitialize() {
   afg1.section = 0;
   afg1.step_num = 0;
-  afg1.step_width = 1;
+  afg1.step_width = 0xFFFFFF00;
   afg1.step_cnt = 0xFFFFFFFF;
   afg1.mode = MODE_STOP;
   afg1.prev_mode = MODE_STOP;
@@ -29,7 +29,7 @@ void AfgAllInitialize() {
 
   afg2.section = 0;
   afg2.step_num = 0;
-  afg2.step_width = 1;
+  afg2.step_width = 0xFFFFFF00;
   afg2.step_cnt = 0xFFFFFFFF;
   afg2.mode = MODE_STOP;
   afg2.prev_mode = MODE_STOP;
@@ -209,19 +209,16 @@ void AfgProcessModeChanges(uint8_t afg_num, PulseInputs pulses) {
 }
 
 // Every tick triggers new output voltages and a check if the step has ended.
-ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses) {
-  AfgState *afg = (AfgState *) afgs[afg_num];
+ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses, uint8_t ticks) {
+  volatile AfgState *afg = (AfgState *) afgs[afg_num];
 
   uStep step = get_step_programming(afg->section, afg->step_num);
-  float delta_voltage = 0.0;
-  uint16_t output_voltage = 0;
-  uint8_t do_recalculate_step_width = 1;
+  float output_voltage = 0;
   ProgrammedOutputs outputs;
 
-
-
+  afg->step_width = GetStepWidth(afg->section, afg->step_num, GetTimeMultiplier(afg_num));
   if (afg->step_cnt < afg->step_width) {
-    afg->step_cnt += 1;
+    afg->step_cnt += ticks;
   }
 
   // Check if we're at the end of the step
@@ -236,7 +233,7 @@ ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses) {
       afg->step_num = afg->stage_address;
       // Reset step counter
       afg->step_cnt = 0;
-      do_recalculate_step_width = 1;
+      update_display();
     }
   } else if (afg->step_cnt >= afg->step_width) {
     // Sample and hold current step value into PreviousStep for next step slope computation
@@ -258,7 +255,8 @@ ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses) {
         afg->prev_mode = afg->mode;
         afg->mode = MODE_WAIT_HI_Z;
       };
-      afg->step_cnt = 0; // Reset step counter
+      // Reset step counter
+      afg->step_cnt = 0;
     };
 
     if (step.b.OpModeSUSTAIN && afg->mode != MODE_STAY_HI_Z) {
@@ -275,42 +273,37 @@ ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses) {
     if (afg->mode == MODE_RUN) {
       // Advance to the next step
       afg->step_num = GetNextStep(afg->section, afg->step_num);
-      afg->step_cnt = 0; // Reset step counter
-      do_recalculate_step_width = 1;
+      afg->step_cnt = 0; // Reset
+      update_display();
     };
   };
 
   // Now set output voltages
   // Compute the current step's programmed voltage output
   output_voltage = GetStepVoltage(afg->section, afg->step_num);
+  afg->step_level = output_voltage;
 
   // Set AFG time out value
   outputs.time = get_time_slider_level(afg->step_num) >> 2;
 
   if (afg->step_cnt < afg->step_width) {
-    // Set AFG1 reference out value
+    // Set AFG reference out value
     // (Slopes down from 1023 to 0 over the course of the step)
     outputs.ref = 1023 - (uint16_t) ((afg->step_cnt << 10) / afg->step_width);
 
     // If the step is sloped, then slope from prev_step_level to the new output value
+    outputs.sloped = step.b.Sloped;
     if (step.b.Sloped ) {
-      if (afg->prev_step_level >= output_voltage) {
-        // Slope down
-        delta_voltage = (float) (afg->prev_step_level - output_voltage) / afg->step_width;
-        output_voltage = afg->prev_step_level - (uint16_t) (delta_voltage * afg->step_cnt);
-      } else if (output_voltage > afg->prev_step_level) {
-        // Slope up
-        delta_voltage = (float) (output_voltage - afg->prev_step_level) / afg->step_width;
-        output_voltage = afg->prev_step_level + (uint16_t) (delta_voltage * afg->step_cnt);
-      }
+      // Interpolate from the previous step level to the new step level
+      afg->step_level = afg->prev_step_level +
+          (output_voltage - afg->prev_step_level) * ((float) afg->step_cnt / (float) afg->step_width);
     }
   } else {
     // No reference output when not running
     outputs.ref = 0;
   }
 
-  afg->step_level = output_voltage;
-  outputs.voltage = output_voltage;
+  outputs.voltage = afg->step_level;
 
   if (afg->step_cnt > PULSE_ACTIVE_STEP_WIDTH) {
     outputs.all_pulses = 0;
@@ -320,11 +313,6 @@ ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses) {
     outputs.all_pulses = 1;
     outputs.pulse1 = step.b.OutputPulse1;
     outputs.pulse2 = step.b.OutputPulse2;
-  }
-
-  if (do_recalculate_step_width) {
-    afg->step_width = GetStepWidth(afg->section, afg->step_num, GetTimeMultiplier(afg_num));
-    update_display();
   }
 
   return outputs;
@@ -350,4 +338,13 @@ void DisableContinuousStageAddress(uint8_t afg_num) {
   }
 }
 
+uint32_t AfgGetStepTicksRemaining(uint8_t afg_num) {
+  AfgState *afg = (AfgState *) afgs[afg_num];
+
+  if (afg->step_cnt < afg->step_width) {
+    return afg->step_width - afg->step_cnt;
+  } else {
+    return 0xFFFFFFFF;
+  }
+}
 

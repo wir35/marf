@@ -76,8 +76,6 @@ void ControllerMainLoop() {
   controller_job_flags.adc_pot_sel = 0;
   controller_job_flags.adc_mux_shift_out = 0;
   controller_job_flags.inhibit_adc = 0;
-  controller_job_flags.afg1_tick = 0;
-  controller_job_flags.afg2_tick = 2;
 
   // Stable switches state, post debouncing
   volatile uint64_t stable_switches_state;
@@ -102,6 +100,8 @@ void ControllerMainLoop() {
   switches.value = stable_switches_state;
 
   AfgAllInitialize();
+  AfgTick(AFG1, get_afg1_pulse_inputs(), 1);
+  AfgTick(AFG2, get_afg2_pulse_inputs(), 1);
 
   // Main loop. Does not return.
   while (1) {
