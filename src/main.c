@@ -222,11 +222,16 @@ void HandlePulseInterruptSignals() {
   if (now - pulse1_handled_time > 2) {
     // Debouncing ... don't trigger if the switches might have bounced back to low values
     if (any_pulses_high(pulses1)) {
-      // We can't immediately call ProcessModeChanges1(pulses1)
-      // since we may need newly updated values from adc2 to do the right thing.
-      // Go into a short modal state and then process the input pulses.
-      controller_job_flags.afg1_interrupts = pulses1;
-      controller_job_flags.modal_loop = CONTROLLER_MODAL_SCAN;
+      if (controller_job_flags.modal_loop == CONTROLLER_MODAL_NONE) {
+        // We may need newly updated values from adc2 to do the right thing.
+        // Go into a short modal state and then process the input pulses.
+        controller_job_flags.afg1_interrupts = pulses1;
+        controller_job_flags.modal_loop = CONTROLLER_MODAL_SCAN;
+      } else {
+        // Can't go into the modal scan because we're already in the save/load modal
+        // So process immediately instead
+        AfgProcessModeChanges(AFG1, pulses1);
+      }
       pulse1_handled_time = now;
     }
   } else if (now < pulse1_handled_time) {
@@ -237,8 +242,12 @@ void HandlePulseInterruptSignals() {
   if (now - pulse2_handled_time > 2) {
     // Debouncing
     if (any_pulses_high(pulses2)) {
-      controller_job_flags.afg2_interrupts = pulses2;
-      controller_job_flags.modal_loop = CONTROLLER_MODAL_SCAN;
+      if (controller_job_flags.modal_loop == CONTROLLER_MODAL_NONE) {
+        controller_job_flags.afg2_interrupts = pulses2;
+        controller_job_flags.modal_loop = CONTROLLER_MODAL_SCAN;
+      } else {
+        AfgProcessModeChanges(AFG2, pulses2);
+      }
       pulse2_handled_time = now;
     }
   } else if (now < pulse2_handled_time) {
@@ -407,7 +416,6 @@ void TIM5_IRQHandler() {
   sloping_output.level += sloping_output.increment;
 
   // Update internal dac (fast)
-  // TODO(maxlord): slope this if in a sloping function
   DAC_SetChannel2Data(DAC_Align_12b_R,
       (uint16_t) sloping_output.level + 0.5);
 

@@ -133,6 +133,12 @@ void ControllerMainLoop() {
 
       // Apply switches that should only be applied after debounce
       ControllerProcessStageAddressSwitches(&switches);
+
+      // Clear switch might send us into another mode
+      if (!switches.b.ClearUp || !switches.b.ClearDown) {
+        // Wait for long press on clear
+        InitClear_Timer();
+      }
     }
 
     // Step programming can be applied continuously to be more responsive,
@@ -230,11 +236,6 @@ void ControllerProcessStageAddressSwitches(uButtons * key) {
     EnableContinuousStageAddress(AFG2);
   } else {
     DisableContinuousStageAddress(AFG2);
-  }
-
-  if (!key->b.ClearUp || !key->b.ClearDown) {
-    // Wait for long press on clear
-    InitClear_Timer();
   }
 }
 
@@ -511,6 +512,9 @@ void ControllerLoadProgramLoop() {
     }
 
     if (switches.value != previous_switches.value) {
+      // Allow stage address to continue to function in modal
+      ControllerProcessStageAddressSwitches(&switches);
+
       if (!switches.b.StepRight) {
         if (program_num >= 15) {
           program_num = 0;
@@ -584,6 +588,9 @@ void ControllerSaveProgramLoop() {
     }
 
     if (switches.value != previous_switches.value) {
+      // Allow stage address to continue to function in modal
+      ControllerProcessStageAddressSwitches(&switches);
+
       if (!switches.b.StepRight) {
         if (program_num >= 15) {
           program_num = 0;
@@ -630,7 +637,6 @@ void ControllerSaveProgramLoop() {
       delay_us(500);
     }
   }
-  controller_job_flags.modal_loop = CONTROLLER_MODAL_NONE;
 }
 
 // Immediately scan all the adc2 lines, and then process mode changes from the input pulses.
