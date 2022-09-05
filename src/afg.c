@@ -231,6 +231,7 @@ ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses, uint8_t ticks) {
       // Sample and hold current voltage output value
       afg->prev_step_level = afg->step_level;
       afg->step_num = afg->stage_address;
+      step = get_step_programming(afg->section, afg->step_num);
       // Reset step counter
       afg->step_cnt = 0;
       update_display();
@@ -273,6 +274,7 @@ ProgrammedOutputs AfgTick(uint8_t afg_num, PulseInputs pulses, uint8_t ticks) {
     if (afg->mode == MODE_RUN) {
       // Advance to the next step
       afg->step_num = GetNextStep(afg->section, afg->step_num);
+      step = get_step_programming(afg->section, afg->step_num);
       afg->step_cnt = 0; // Reset
       update_display();
     };
