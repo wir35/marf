@@ -3,7 +3,6 @@
 This repo contains source code for the Buchla 248r module, originally produced 
 by the Electric Music Store and subsequently improved by SA Modular.
 
-
 ## Installation
 
 1.  Obtain an ST-Link STM32 programmer (v2 recommended, available on Amazon for less than $20).
@@ -16,8 +15,31 @@ by the Electric Music Store and subsequently improved by SA Modular.
     3.  Power on.
     4.  Program the firmware.
     5.  Power off, disconnect the ST-Link and reseat the module.
-    6.  Power back on and enjoy.
+    6.  Power back on.
+5.  The old cal data is now wrong, so run the calibration procedure below.
 
+### Module Calibration
+
+Due to some questionable hardware design choices, the module _absolutely requires_ calibration
+for correct behavior of panel controls and external inputs. Use the following procedure.
+
+1.  Hold Stage Address 1 Advance down during start up.
+2.  Note leds cycling.
+3.  Turn all pots to maximum. The slider positions do not matter.
+4.  Apply a calibrated 10v source to all 4 external inputs.
+5.  Select pulse 2 up if you need to swap the pulse leds. Led will move to pulse 2.
+6.  Select pulse 1 up to swap it back to normal.
+7.  Press Stage Address 2 Advance down to save calibration.
+8.  It will ERASE the entire eprom, including saved programs.
+
+(Some hardware revisions had the pulse leds switched by accident. 
+You only need this part of the procedure if you are affected by this bug.)
+
+### Recommended Hardware Modifications
+
+The module can also be improved by making several hardware modifications.
+Visit [Dave Brown's Page](https://modularsynthesis.com/roman/buchla248/248_mods.htm)
+for a comprehensive description of the recommended changes.
 
 ## Version History
 
@@ -32,10 +54,14 @@ and to resolve many performance problems.
 See the [RELEASE_NOTES](https://github.com/wir35/marf/blob/v2.66/RELEASE_NOTES.txt) 
 file for a description of both the user-visible and internal changes.
 
+Expander modules provided by SAModular have been tested with this firmware
+and operate correctly.
+
 ### v2.5
 
 The project was converted from the Keil toolchain to STM32Cube by 
-[Steven Barsky](https://github.com/stevenbarsky) and a good number of bugs were fixed.
+[Steven Barsky](https://github.com/stevenbarsky) and a good number of bugs were fixed,
+including expander support.
 
 Most new builds are currently programmed with this release.
 
