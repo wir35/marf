@@ -20,6 +20,13 @@ by the Electric Music Store and subsequently improved by SA Modular.
 
 ### Module Calibration
 
+DIP switch settings
+
+1.  Set switch 1 on for 1.2v/octave scaling.
+2.  Set switch 2 on for 1v/octave scaling.
+3.  Set switch 3 off always
+4.  Set switch 4 on if an expander module is connected.
+
 Due to some questionable hardware design choices, the module _absolutely requires_ calibration
 for correct behavior of panel controls and external inputs. Use the following procedure.
 
@@ -34,6 +41,69 @@ for correct behavior of panel controls and external inputs. Use the following pr
 
 (Some hardware revisions had the pulse leds switched by accident. 
 You only need this part of the procedure if you are affected by this bug.)
+
+### Usage
+
+All of the instructions in the Buchla original manual still apply to the 2.66 revision
+(perhaps more so than in 2.5). This section describes the additional functionality.
+
+#### AFG Section Shift (unexpanded units only)
+
+In normal operation, both function generators (AFG) utilize the same step programming.
+This is how the original module operates. In previous revisions (1.0 - 2.5) this
+was "improved" by making the programming distinct for each AFG. This was perhaps a
+slight increase in functionality, with a decrease in usability. The original behavior
+has been restored in 2.66. 
+
+A hack is provided to access two different banks of step programming.
+
+1.  Afgs 1 and 2 both access the same memory unless you use section shift.
+2.  Press Stage Address Display 1 + Stage No Right to move afg1 to steps [17-32].
+3.  Press Stage Address Display 1 + Stage No Left to move afg1 back to steps [1-16].
+3.  Press Stage Address Display 2 + Stage No Right to move afg2 to steps [17-32].
+4.  Press Stage Address Display 2 + Stage No Left to move afg2 back to steps [1-16].
+5.  Switches have no effect when expander is present.
+
+When set to steps 17-32, of course the slider value will still be that of 1-16.
+
+#### Save Program
+
+This version supports saving and loading 16 programs (even with expander). 
+Slider data is always saved along with the program. Note that the marf does not 
+stop running while saving a program.
+
+1.  Press the Clear switch _down_ briefly to enter save mode. 
+2.  The pulse leds will toggle to indicate that you are in save mode.
+3.  To abort saving, press one of the Display switches.
+4.  Use the Stage No switch to select one of the 16 memory locations.
+    The step leds will indicate the memory location.
+5.  Press Clear switch _down_ again briefly to save the program.
+6.  Leds will flash downwards when the program is saved.
+
+#### Load Program
+
+Any of the 16 saved programs may be reloaded. Note that the marf does not stop 
+running when loading a program. Once the program is loaded, all sliders will be 
+"pinned" at their saved value. To restore slider activity, the slider must be moved 
+through the saved value. If a slider is stuck then moving it from minimum to maximum
+value will always unstick it.
+
+1.  Press the Clear switch _up_ briefly to enter load mode.
+2.  The pulse leds will toggle to indicate that you are in load mode.
+3.  To abort loading, press one of the Display switches.
+4.  Use the Stage No switch to select one of the 16 memory locations.
+5.  Press Clear switch _up_ again briefly to load the program.
+6.  Leds will flash upwards when the program is loaded.
+
+#### Pulse Tricks
+
+Note these useful behaviors.
+
+1.  A simultaneous pulse to start and stop is the same as the manual advance switch.
+2.  A simultaneous pulse to strobe and start will correctly start on the strobed step.
+
+To stack pulse inputs to multiple destinations, a hardware modification may be necessary
+to increase the input impedence of the pulse inputs.
 
 ### Recommended Hardware Modifications
 
